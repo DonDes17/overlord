@@ -2,10 +2,11 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Square, Copy, Check, ArrowDown, Undo2, Plus, SendHorizontal, Pencil, X, GitBranch } from "lucide-react";
+import { Square, Copy, Check, ArrowDown, Undo2, Plus, SendHorizontal, Pencil, X, GitBranch, FileDiff } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { MarkdownContent } from "./MarkdownContent.js";
 import { ToolUseCard } from "./ToolUseCard.js";
+import { TurnDiffModal } from "./TurnDiffModal.js";
 import { RichPasteInput, type RichPasteInputHandle, type FileBlock } from "./RichPasteInput.js";
 import type { Project } from "../types.js";
 import { formatModelVersion } from "../lib/models.js";
@@ -308,13 +309,17 @@ const UserMessage = React.memo(function UserMessage({
   projectId,
   onRollback,
   onBranch,
+  nextSnapshotSha,
 }: {
   entry: ChatEntry;
   projectId: number;
   onRollback: (content: string) => void;
   onBranch?: () => void;
+  /** Snapshot of the following user message; absent for the latest turn (diff goes to the working tree). */
+  nextSnapshotSha?: string;
 }) {
   const [rolling, setRolling] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
   const [confirmNeeded, setConfirmNeeded] = useState<string | null>(null);
 
   const handleRollback = useCallback(async (force = false) => {
@@ -384,11 +389,18 @@ const UserMessage = React.memo(function UserMessage({
           <span className="text-[10px] font-semibold uppercase tracking-wider opacity-50">
             You
           </span>
-          {onBranch && (
-            <span className="-mr-1 -mt-1 text-primary-foreground/70">
-              <BranchButton onBranch={onBranch} />
-            </span>
-          )}
+          <span className="-mr-1 -mt-1 flex items-center text-primary-foreground/70">
+            {entry.snapshotSha && (
+              <button
+                onClick={() => setShowDiff(true)}
+                className="flex h-6 w-6 items-center justify-center rounded-md opacity-0 group-hover/user:opacity-100 transition-opacity hover:bg-primary-foreground/15"
+                title="See the changes made during this turn"
+              >
+                <FileDiff className="h-3.5 w-3.5" />
+              </button>
+            )}
+            {onBranch && <BranchButton onBranch={onBranch} />}
+          </span>
         </div>
         <div className="text-sm leading-relaxed select-text">
           {entry.displayContent ? (
@@ -407,6 +419,14 @@ const UserMessage = React.memo(function UserMessage({
           )}
         </div>
       </div>
+      {showDiff && entry.snapshotSha && (
+        <TurnDiffModal
+          projectId={projectId}
+          fromSha={entry.snapshotSha}
+          toSha={nextSnapshotSha}
+          onClose={() => setShowDiff(false)}
+        />
+      )}
     </div>
   );
 });
@@ -590,6 +610,19 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
   const [agentStatus, setAgentStatus] = useState<AgentStatus>("idle");
   const [learningsStatus, setLearningsStatus] = useState<LearningsStatus>("idle");
   const [entries, setEntries] = useState<ChatEntry[]>([]);
+  // For each user message, the snapshot taken before the next user message:
+  // that pair brackets exactly what one turn changed.
+  const nextSnapshotById = useMemo(() => {
+    const map = new Map<string, string | undefined>();
+    let next: string | undefined;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i];
+      if (e.role !== "user") continue;
+      map.set(e.id, next);
+      next = e.snapshotSha ?? next;
+    }
+    return map;
+  }, [entries]);
   const [firstLoadedIndex, setFirstLoadedIndex] = useState(0);
   const [totalEvents, setTotalEvents] = useState(0);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -1760,6 +1793,7 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
               key={entry.id}
               entry={entry}
               projectId={project.id}
+              nextSnapshotSha={nextSnapshotById.get(entry.id)}
               onBranch={onCreateBranch ? () => handleBranch(entry) : undefined}
               onRollback={(content) => {
                 onInputChange(content);
