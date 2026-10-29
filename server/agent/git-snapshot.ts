@@ -1,4 +1,7 @@
 import { execSync } from "child_process";
+import { copyFileSync, existsSync, mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { isAbsolute, join } from "path";
 
 export function createGitSnapshot(cwd: string): string | null {
   try {
@@ -16,11 +19,22 @@ export function createGitSnapshot(cwd: string): string | null {
     }
     if (!hasCommits) return null;
 
-    execSync("git add -A", { cwd, stdio: "ignore" });
-    const sha = execSync("git stash create", {
-      cwd, encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    execSync("git reset", { cwd, stdio: "ignore" });
+    // Work on a throwaway copy of the index so whatever the user has staged stays staged.
+    const dir = mkdtempSync(join(tmpdir(), "overlord-idx-"));
+    const tmpIndex = join(dir, "index");
+    let sha: string;
+    try {
+      let realIndex = execSync("git rev-parse --git-path index", { cwd, encoding: "utf-8", timeout: 2000 }).trim();
+      if (!isAbsolute(realIndex)) realIndex = join(cwd, realIndex);
+      if (existsSync(realIndex)) copyFileSync(realIndex, tmpIndex);
+      const env = { ...process.env, GIT_INDEX_FILE: tmpIndex };
+      execSync("git add -A", { cwd, stdio: "ignore", env });
+      sha = execSync("git stash create", {
+        cwd, encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"], env,
+      }).trim();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
 
     if (!sha) {
       return execSync("git rev-parse HEAD", { cwd, encoding: "utf-8", timeout: 3000 }).trim();
