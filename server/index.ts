@@ -31,6 +31,7 @@ import { setWebSocketServer } from "./ws.js";
 import { attachWsHandlers } from "./agent/ws-handler.js";
 import { agentSessions, sessionKey, saveEventsNow } from "./agent/sessions.js";
 import { getCommitsSince, rollbackToSnapshot } from "./agent/git-snapshot.js";
+import { isValidSha, turnDiff } from "./agent/git-diff.js";
 import type { Channel } from "./agent/types.js";
 
 const PORT = Number(process.env.PORT) || 4747;
@@ -371,6 +372,23 @@ app.post("/api/agent/rollback", async (c) => {
   }
 
   return c.json({ ok: true });
+});
+
+// Diff of one agent turn: from the snapshot taken before the message to the
+// next message's snapshot, or to the working directory for the latest turn.
+app.post("/api/agent/diff", async (c) => {
+  const { projectId, fromSha, toSha } = await c.req.json();
+  if (!projectId || !isValidSha(fromSha)) return c.json({ ok: false, error: "projectId and a valid fromSha are required" }, 400);
+  if (toSha !== undefined && toSha !== null && !isValidSha(toSha)) return c.json({ ok: false, error: "Invalid toSha" }, 400);
+
+  const project = db.select().from(projects).where(eq(projects.id, Number(projectId))).get();
+  if (!project) return c.json({ ok: false, error: "Project not found" }, 404);
+
+  try {
+    return c.json({ ok: true, ...turnDiff(project.path, fromSha, toSha ?? undefined) });
+  } catch (err) {
+    return c.json({ ok: false, error: String(err) }, 500);
+  }
 });
 
 app.post("/api/agent/rollback/force", async (c) => {
