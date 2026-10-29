@@ -11,6 +11,8 @@ const SHA_RE = /^[0-9a-f]{7,40}$/i;
 
 export interface DiffFileStat {
   path: string;
+  /** Previous path when the file was renamed. */
+  oldPath?: string;
   added: number;
   deleted: number;
   binary: boolean;
@@ -79,12 +81,17 @@ export function turnDiff(cwd: string, fromSha: string, toSha?: string): TurnDiff
       const [added, deleted, ...rest] = line.split("\t");
       // Renames come out as "old => new" or "dir/{old => new}"; keep the destination for display.
       const raw = rest.join("\t");
-      const path = raw.includes(" => ")
+      const renamed = raw.includes(" => ");
+      const path = renamed
         ? raw.replace(/\{[^}]* => ([^}]*)\}/, "$1").replace(/^.* => /, "").replace(/\/\//g, "/")
         : raw;
+      const oldPath = renamed
+        ? raw.replace(/\{([^}]*) => [^}]*\}/, "$1").replace(/ => .*$/, "").replace(/\/\//g, "/")
+        : undefined;
       const binary = added === "-";
       return {
         path,
+        oldPath,
         added: binary ? 0 : Number(added),
         deleted: binary ? 0 : Number(deleted),
         binary,
@@ -104,4 +111,38 @@ export function turnDiff(cwd: string, fromSha: string, toSha?: string): TurnDiff
   }
 
   return { files, patch, truncated, toWorkingTree };
+}
+
+export interface RevertResult {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Undo a turn (or some of its files) by applying its patch in reverse on the
+ * working tree. Changes made by later turns are kept; on conflict nothing is written.
+ */
+export function revertTurn(cwd: string, fromSha: string, toSha?: string, paths?: string[]): RevertResult {
+  const target = toSha ?? workingTreeSha(cwd);
+  const scope = paths?.length ? ["--", ...paths] : [];
+  // --no-renames turns a rename into delete + add, so both paths must be in `paths`.
+  const patch = git(cwd, ["diff", "--binary", "--no-renames", "--no-color", "--no-ext-diff", fromSha, target, ...scope]);
+  if (!patch.trim()) return { ok: true };
+
+  const run = (args: string[]) =>
+    execFileSync("git", ["apply", "-R", "--whitespace=nowarn", ...args], {
+      cwd,
+      input: patch,
+      encoding: "utf-8",
+      timeout: 20000,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+  try {
+    run(["--check"]);
+    run([]);
+    return { ok: true };
+  } catch (err) {
+    const stderr = (err as { stderr?: string }).stderr;
+    return { ok: false, error: (stderr || String(err)).trim() };
+  }
 }

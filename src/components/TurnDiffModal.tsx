@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { html as renderDiff } from "diff2html";
 import type { ColorSchemeType } from "diff2html/lib/types";
-import { X, Columns2, Rows2, Loader2 } from "lucide-react";
+import { X, Columns2, Rows2, Loader2, Undo2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface DiffFileStat {
   path: string;
+  oldPath?: string;
   added: number;
   deleted: number;
   binary: boolean;
@@ -47,6 +48,11 @@ export function TurnDiffModal({
   const [data, setData] = useState<DiffResponse | null>(null);
   const [layout, setLayout] = useState<Layout>(readLayout);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const [reload, setReload] = useState(0);
+  // Undo needs a second click: holds "turn" or the path waiting for confirmation.
+  const [confirm, setConfirm] = useState<string | null>(null);
+  const [undoing, setUndoing] = useState(false);
+  const [undoError, setUndoError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,7 +67,31 @@ export function TurnDiffModal({
     return () => {
       cancelled = true;
     };
-  }, [projectId, fromSha, toSha]);
+  }, [projectId, fromSha, toSha, reload]);
+
+  const undo = async (key: string, paths?: string[]) => {
+    if (confirm !== key) {
+      setConfirm(key);
+      setUndoError(null);
+      return;
+    }
+    setConfirm(null);
+    setUndoing(true);
+    try {
+      const r = await fetch("/api/agent/revert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, fromSha, toSha, paths }),
+      });
+      const d = await r.json();
+      if (!d.ok) setUndoError(d.error ?? "Undo failed.");
+      else setReload((n) => n + 1);
+    } catch (err) {
+      setUndoError(String(err));
+    } finally {
+      setUndoing(false);
+    }
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -117,6 +147,19 @@ export function TurnDiffModal({
             </span>
           )}
           <div className="ml-auto flex items-center gap-1">
+            {files.length > 0 && (
+              <button
+                onClick={() => undo("turn")}
+                disabled={undoing}
+                className={cn(
+                  "mr-2 flex h-7 items-center gap-1 rounded px-2 text-xs hover:bg-secondary disabled:opacity-50",
+                  confirm === "turn" && "bg-destructive text-destructive-foreground hover:bg-destructive"
+                )}
+                title="Revert every file of this turn"
+              >
+                <Undo2 className="h-3.5 w-3.5" /> {confirm === "turn" ? "Click again to confirm" : "Undo turn"}
+              </button>
+            )}
             <button
               onClick={() => setLayout("side-by-side")}
               className={cn("flex h-7 items-center gap-1 rounded px-2 text-xs hover:bg-secondary", layout === "side-by-side" && "bg-secondary")}
@@ -137,6 +180,10 @@ export function TurnDiffModal({
           </div>
         </div>
 
+        {undoError && (
+          <p className="whitespace-pre-wrap border-b border-border bg-destructive/10 px-4 py-2 text-xs text-destructive">{undoError}</p>
+        )}
+
         {!data && (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Computing diff…
@@ -155,10 +202,10 @@ export function TurnDiffModal({
           <div className="flex min-h-0 flex-1">
             <aside className="w-72 shrink-0 overflow-y-auto border-r border-border py-2 text-xs">
               {files.map((f) => (
+                <div key={f.path} className="group flex items-center hover:bg-secondary">
                 <button
-                  key={f.path}
                   onClick={() => !f.lockfile && !f.binary && scrollToFile(f.path)}
-                  className="flex w-full items-center gap-2 px-3 py-1 text-left hover:bg-secondary"
+                  className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1 text-left"
                   title={f.path}
                 >
                   <span className="min-w-0 flex-1 truncate font-mono">
@@ -173,6 +220,18 @@ export function TurnDiffModal({
                     </span>
                   )}
                 </button>
+                <button
+                  onClick={() => undo(f.path, f.oldPath ? [f.oldPath, f.path] : [f.path])}
+                  disabled={undoing}
+                  className={cn(
+                    "mr-2 shrink-0 rounded px-1.5 py-0.5 text-[11px] opacity-0 hover:bg-background group-hover:opacity-100 disabled:opacity-50",
+                    confirm === f.path && "bg-destructive text-destructive-foreground opacity-100 hover:bg-destructive"
+                  )}
+                  title="Revert this file"
+                >
+                  {confirm === f.path ? "Confirm?" : <Undo2 className="h-3 w-3" />}
+                </button>
+                </div>
               ))}
               {files.some((f) => f.lockfile) && (
                 <p className="px-3 pt-3 text-[11px] text-muted-foreground">Lockfiles are counted but not shown.</p>
