@@ -22,6 +22,9 @@ Ce fichier sert de contexte pour Claude Code quand on travaille sur ce repo.
   (alias : `cd ~/Desktop/overlord && OVERLORD_NODE_PATH="$(which node)" npm run dev:electron`).
   `OVERLORD_NODE_PATH` est obligatoire : sinon Electron lance le backend en `ELECTRON_RUN_AS_NODE`,
   qui n’a pas les globals Web (`Request`) → crash Hono `Class extends value undefined`.
+- **Node doit être la v22** au lancement : `better-sqlite3` est compilé pour elle. Avec une autre version
+  (par exemple la v20 après un redémarrage), le backend plante avec `NODE_MODULE_VERSION 127 … requires
+  115`. Remède : `nvm use 22` (et `nvm alias default 22` pour le fixer), sans recompiler.
 - Mode navigateur : `npm run dev` (passe par tsx, pas besoin du fix).
 - Réinstallation propre : `rm -rf node_modules package-lock.json && npm install`.
 - Skills plugins visibles dans l’onglet Skills : `sync-skills` après chaque install/MAJ de plugin
@@ -30,9 +33,10 @@ Ce fichier sert de contexte pour Claude Code quand on travaille sur ce repo.
 
 ## Fonctionnement d’Overlord à connaître
 
-- Le chat lance `claude --print` (headless). Les commandes interactives du CLI (`/clear`, `/compact`,
-  `/resume`, `/permissions`, `/rewind`…) apparaissent dans l’autocomplétion mais **ne font rien**.
-- Overlord intercepte ses propres commandes : `/model`, `/stop`, `/cost`, `/branch`, `/clear`, `/resume`, `/plan`, `/help`
+- Le chat lance `claude --print` (headless). Les commandes interactives du CLI (`/compact`,
+  `/permissions`, `/rewind`…) apparaissent dans l’autocomplétion mais **ne font rien**.
+  (`/clear` et `/resume` sont désormais gérées par Overlord, voir ci-dessous.)
+- Overlord intercepte ses propres commandes : `/model`, `/stop`, `/cost`, `/branch`, `/clear`, `/resume`, `/plan`, `/worktree`, `/help`
   (`OVERLORD_COMMANDS` et `handleSend` dans `src/components/ChatTab.tsx`).
   Les commandes perso et plugins (`/aidd-*`…) passent au CLI et fonctionnent.
 - Skills et hooks Claude Code s’appliquent dans le chat (un message = un `UserPromptSubmit`).
@@ -124,7 +128,59 @@ présente un plan. Badge `PLAN` dans l'en-tête tant que le mode est actif.
 - `ExitPlanMode` n'existe pas en headless : pour exécuter le plan, faire `/plan off` puis le demander.
 - Fichiers : `server/agent/send-message.ts` (flag), `types.ts`, `server/index.ts`, `ChatTab.tsx`.
 
+### 7. Worktrees — `feat/worktrees`
+
+Une branche (sous-conversation) peut tourner dans son **propre git worktree** : dossier et branche git
+dédiés, donc deux agents en parallèle sur un même dépôt ne se marchent plus dessus (fichiers, snapshots,
+diffs, undo).
+
+- **Création** : en cliquant sur l'icône ⎇ d'un message, une boîte propose « Isoler dans un worktree »
+  (choix mémorisé) et le nom. Dossier : `~/.overlord/worktrees/<projet>-<id>/<nom>-<id>`, branche
+  `overlord/<nom>-<id>`, créée depuis le HEAD du projet. Hors de tout dépôt, pour ne pas polluer le
+  `git add -A` des snapshots.
+- **Préparation** : lien symbolique `node_modules` ; copie des `.env*` de la racine **seulement s'ils
+  sont ignorés par git** (sinon ils apparaîtraient comme modifiés). `/node_modules` est ajouté à
+  `.git/info/exclude` (local, partagé par les worktrees) : un lien symbolique n'est pas couvert par un
+  motif `node_modules/` et irait sinon dans les snapshots.
+- **Chemin** : `session.projectPath` pointe vers le worktree (`loadSessionFromDb`, `resolveProjectPath`
+  dans `server/agent/sessions.ts`). Le serveur le décide depuis la base, jamais le client. Un worktree
+  supprimé à la main n'est **pas** remplacé par le dossier du projet : l'envoi échoue avec un message.
+- **Routes** `diff`, `revert`, `branch`, `claude-sessions`, `resume`, `clear` acceptent `channel`.
+  `isAgentRunning` est **par dossier** : un agent dans un worktree ne bloque pas le dépôt principal.
+- **`/worktree`** (dans une branche) : chemin, branche, état. `/worktree -d` supprime le worktree en
+  gardant la conversation, qui travaille alors dans le dossier du projet avec une session Claude
+  vierge ; `-d --force` supprime même avec du travail non sauvegardé.
+- **Suppression** d'une branche ou d'un projet : le worktree n'est retiré que s'il est propre et sans
+  commit non fusionné ; sinon il reste sur disque, avec son chemin affiché (bandeau dans l'onglet
+  Conversations). L'onglet affiche `⎇ overlord/…` avec `n~` fichiers modifiés et `n↑` commits en avance.
+- **Récupérer le travail** (pas d'interface de fusion) :
+  1. commiter dans le worktree (demander à l'agent « commite », ou `git add -A && git commit` dans le dossier
+     donné par `/worktree`) : sans commit, rien n'est sauvegardé dans la branche git ;
+  2. depuis le **dépôt principal** : `git switch main && git merge overlord/<nom>`, ou pousser la branche et
+     ouvrir une PR (`git push -u origin overlord/<nom>` puis `gh pr create`) ;
+  3. `/worktree -d` dans la branche : supprime le dossier et la branche git une fois fusionnée.
+  Pièges : deux branches qui touchent le même fichier donnent un conflit à la seconde fusion ; des
+  modifications non commitées dans le dépôt principal peuvent bloquer le `git merge` ; après un
+  `git merge --squash`, git juge la branche non fusionnée, donc `/worktree -d --force` est nécessaire.
+- Fichiers : `server/agent/git-worktree.ts` (nouveau), colonnes `worktree_path` / `worktree_branch`
+  (`conversations`), `server/routes/conversations.ts`, `server/index.ts` (`pathFor`),
+  `src/components/NewBranchDialog.tsx` (nouveau), `ConversationsTab.tsx`, `SubConversationModal.tsx`.
+
+### 8. Corrections de la saisie — `fix/slash-enter-caret`
+
+- Entrée sur une commande `/` **déjà tapée en entier** (`/plan`) l'envoie ; avant, elle ne faisait que
+  l'autocompléter (`/plan ` avec un espace), ce qui obligeait à un second Entrée. Tab complète toujours,
+  et Entrée complète la commande surlignée quand ce qui est tapé n'est qu'un début (`/pl`).
+- `RichPasteInput` reconstruit son contenu quand la valeur change de l'extérieur et perdait le curseur
+  (il sautait avant le `/`). Il est maintenant replacé à la fin, seulement si l'éditeur a le focus.
+- Fichiers : `src/components/ChatTab.tsx` (`handleKeyDown`), `src/components/RichPasteInput.tsx`.
+
 ## Limites connues
+
+- Worktrees : pas de CodeGraph (l'index est par chemin) ; `node_modules` partagé (deux branches qui
+  changent des dépendances se gênent) ; pas d'interface de fusion ; création uniquement au moment où la
+  branche est créée (pas d'ajout a posteriori) ; une branche git ne peut être extraite qu'à un seul
+  endroit (`/branch <nom>` sur une branche déjà utilisée ailleurs renvoie l'erreur de git).
 
 - `rollbackToSnapshot` fait encore un `git reset` final : un rollback ↶ désindexe le staging.
   Même correctif possible (index temporaire), pas fait.
@@ -137,7 +193,8 @@ présente un plan. Badge `PLAN` dans l'en-tête tant que le mode est actif.
 | 4 ✅ | `/branch` + branche courante dans l’en-tête | `feat/branch-cmd` |
 | 5 ✅ | `/clear` et `/resume` | `feat/session-cmds` |
 | 6 ✅ | `/plan` (`--permission-mode plan`) | `feat/plan-mode` |
-| 7 | Worktrees : deux tâches en parallèle sur un même repo | `feat/worktrees` |
+| 7 ✅ | Worktrees : deux tâches en parallèle sur un même repo | `feat/worktrees` |
+| — | `/merge` : commit + fusion + nettoyage d'un worktree depuis Overlord (gérer les conflits) | à définir |
 | — | Annulation par bloc (hunk) dans la fenêtre de diff | à définir |
 | — | Index temporaire aussi dans `rollbackToSnapshot` | à définir |
 
@@ -148,6 +205,14 @@ présente un plan. Badge `PLAN` dans l'en-tête tant que le mode est actif.
 - Lancement du CLI : `server/agent/send-message.ts`.
 - Thème : toujours sombre (`<html class="dark">` dans `index.html`).
 - Vérifier avant de committer : `npx tsc --noEmit -p .` puis `npx vite build`.
+- Données locales : base SQLite `~/.overlord/overlord.db`, worktrees `~/.overlord/worktrees/`.
+- Tester la logique serveur sans toucher à ces données : script `tsx` (Node 22) lancé avec un `HOME`
+  temporaire (`HOME=$(mktemp -d) npx tsx test.mts`), qui appelle les modules (`git-worktree.ts`…) ou
+  les routes Hono en mémoire (`app.request("/sub", …)`) sur un dépôt git jetable. Un script placé hors du
+  projet doit importer `drizzle-orm` par son chemin absolu.
+- Tester l'interface (worktrees) : projet jetable hors du Bureau, deux branches avec worktree lancées en
+  même temps sur le même fichier, vérifier que les diffs restent séparés et que le dépôt principal est
+  intact, puis supprimer une branche propre (dossier retiré) et une branche modifiée (dossier conservé).
 
 ## Pièges rencontrés
 
@@ -157,3 +222,7 @@ présente un plan. Badge `PLAN` dans l'en-tête tant que le mode est actif.
 - Une PR se crée sur le fork avec `gh pr create --repo DonDes17/overlord --base main --head <branche>`
   (sans `--repo`, `gh` vise `poptocrack/overlord`). Fixer une fois : `gh repo set-default DonDes17/overlord`.
 - `gh pr create --fill` échoue sans `origin/main` en local : faire `git fetch origin` avant.
+- Un test qui crée des worktrees ou une base doit se faire avec un `HOME` temporaire, sinon il écrit dans
+  le vrai `~/.overlord`.
+- `/branch <nom>` ne crée plus rien tout seul (`/branch -c <nom>`) : avec la création implicite, une faute
+  de frappe sur un nom de branche créait une branche par erreur (cas vécu avec `main` absent d'un projet).

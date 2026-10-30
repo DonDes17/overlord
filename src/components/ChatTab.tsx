@@ -42,6 +42,7 @@ const OVERLORD_COMMANDS: SlashCmd[] = [
   { name: "clear", description: "Repartir d'un contexte vierge (la conversation affichée est conservée)", scope: "overlord", type: "overlord" },
   { name: "resume", description: "Reprendre une session Claude de ce projet — /resume liste, /resume <n ou id>", scope: "overlord", type: "overlord" },
   { name: "plan", description: "Mode plan : l'agent propose sans modifier — /plan bascule, /plan on|off", scope: "overlord", type: "overlord" },
+  { name: "worktree", description: "Worktree de cette branche — /worktree affiche l'état, /worktree -d le supprime", scope: "overlord", type: "overlord" },
   { name: "help", description: "Lister les commandes Overlord disponibles", scope: "overlord", type: "overlord" },
 ];
 const OVERLORD_COMMAND_NAMES = new Set(OVERLORD_COMMANDS.map((c) => c.name));
@@ -311,12 +312,14 @@ function BranchButton({ onBranch }: { onBranch: () => void }) {
 const UserMessage = React.memo(function UserMessage({
   entry,
   projectId,
+  channel,
   onRollback,
   onBranch,
   nextSnapshotSha,
 }: {
   entry: ChatEntry;
   projectId: number;
+  channel: string;
   onRollback: (content: string) => void;
   onBranch?: () => void;
   /** Snapshot of the following user message; absent for the latest turn (diff goes to the working tree). */
@@ -426,6 +429,7 @@ const UserMessage = React.memo(function UserMessage({
       {showDiff && entry.snapshotSha && (
         <TurnDiffModal
           projectId={projectId}
+          channel={channel}
           fromSha={entry.snapshotSha}
           toSha={nextSnapshotSha}
           onClose={() => setShowDiff(false)}
@@ -1268,11 +1272,11 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
   // itself, so it is re-read whenever a run ends.
   const [gitBranch, setGitBranch] = useState<{ branch: string | null; detached: boolean }>({ branch: null, detached: false });
   const refreshBranch = useCallback(() => {
-    fetch(`/api/agent/branch?projectId=${project.id}`)
+    fetch(`/api/agent/branch?projectId=${project.id}&channel=${encodeURIComponent(channel)}`)
       .then((r) => r.json())
       .then((d) => d.ok && setGitBranch({ branch: d.branch, detached: !!d.detached }))
       .catch(() => {});
-  }, [project.id]);
+  }, [project.id, channel]);
   useEffect(() => {
     if (agentStatus === "idle") refreshBranch();
   }, [agentStatus, refreshBranch]);
@@ -1337,7 +1341,7 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
         const flagged = arg.match(/^(-d|--delete|-c|--create)\s+(\S+)$/);
         const action = !flagged ? "switch" : flagged[1] === "-d" || flagged[1] === "--delete" ? "delete" : "create";
         if (!arg) {
-          fetch(`/api/agent/branch?projectId=${project.id}`)
+          fetch(`/api/agent/branch?projectId=${project.id}&channel=${encodeURIComponent(channel)}`)
             .then((r) => r.json())
             .then((d) => {
               if (!d.ok || !d.branch) return pushInfo("Ce projet n'est pas un dépôt git.");
@@ -1359,7 +1363,7 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
           fetch("/api/agent/branch", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ projectId: project.id, name, action }),
+            body: JSON.stringify({ projectId: project.id, channel, name, action }),
           })
             .then((r) => r.json())
             .then((d) => {
@@ -1443,6 +1447,40 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
             );
           })
           .catch((err) => pushInfo(`Échec : ${String(err)}`));
+      } else if (cmd === "worktree") {
+        const convId = /^sub:(\d+)$/.exec(channel)?.[1];
+        const remove = /^(-d|--delete)(\s+--force)?$/.exec(arg);
+        if (!convId) {
+          pushInfo("Les worktrees sont rattachés aux **branches** (sous-conversations). Créez-en une avec l'icône ⎇ d'un message, en cochant « Isoler dans un worktree ».");
+        } else if (arg && !remove) {
+          pushInfo("Usage : `/worktree` (état), `/worktree -d` (supprime), `/worktree -d --force` (supprime même avec du travail non sauvegardé).");
+        } else if (remove) {
+          fetch(`/api/conversations/${convId}/worktree${remove[2] ? "?force=true" : ""}`, { method: "DELETE" })
+            .then((r) => r.json())
+            .then((d) => {
+              if (!d.ok) return pushInfo(`Worktree conservé : ${d.error}${d.status ? "\nPour le supprimer quand même : `/worktree -d --force`." : ""}`);
+              refreshBranch();
+              pushInfo(
+                "**Worktree supprimé.** Cette branche travaille maintenant dans le dossier principal du projet, avec une session Claude vierge." +
+                  (d.warning ? `\n${d.warning}` : "")
+              );
+            })
+            .catch((err) => pushInfo(`Échec : ${String(err)}`));
+        } else {
+          fetch(`/api/conversations/${convId}/worktree`)
+            .then((r) => r.json())
+            .then((d) => {
+              if (!d.ok) return pushInfo(`Échec : ${d.error}`);
+              if (!d.worktree) return pushInfo("Cette branche travaille dans le dossier principal du projet (pas de worktree).");
+              const st = d.worktree.status;
+              pushInfo(
+                `**Worktree**\n- Dossier : \`${d.worktree.path}\`\n- Branche git : \`${d.worktree.branch}\`\n` +
+                  (st ? `- État : ${st.changed} fichier(s) modifié(s), ${st.ahead} commit(s) non fusionné(s)` : "- État : illisible (dossier supprimé ?)") +
+                  `\nPour récupérer le travail : fusionnez \`${d.worktree.branch}\` depuis le dépôt principal.`
+              );
+            })
+            .catch((err) => pushInfo(`Échec : ${String(err)}`));
+        }
       } else if (cmd === "help") {
         pushInfo(
           `**Commandes Overlord**\n` +
@@ -1455,7 +1493,7 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
       onInputChange("");
       return true;
     },
-    [project.id, channel, tokenStats, models, model, handleModelChange, pushInfo, onInputChange, gitBranch, planMode]
+    [project.id, channel, tokenStats, models, model, handleModelChange, pushInfo, onInputChange, gitBranch, planMode, refreshBranch]
   );
 
   const handleSend = useCallback(() => {
@@ -1945,6 +1983,7 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
               key={entry.id}
               entry={entry}
               projectId={project.id}
+              channel={channel}
               nextSnapshotSha={nextSnapshotById.get(entry.id)}
               onBranch={onCreateBranch ? () => handleBranch(entry) : undefined}
               onRollback={(content) => {

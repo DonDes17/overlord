@@ -7,6 +7,7 @@ import { isAbsolute, join, relative } from "path";
 import { execSync } from "child_process";
 import { detectWorkspaces } from "../workspaces.js";
 import { buildEffectiveSystemPrompt } from "../agent/system-prompt.js";
+import { removeWorktree } from "../agent/git-worktree.js";
 import type { Channel } from "../agent/types.js";
 
 function getGitRemoteUrl(projectPath: string): string | null {
@@ -272,10 +273,19 @@ app.delete("/:id", async (c) => {
 
   // Fetch conversations to delete their messages
   const projectConversations = db
-    .select({ id: conversations.id })
+    .select({ id: conversations.id, worktreePath: conversations.worktreePath, worktreeBranch: conversations.worktreeBranch })
     .from(conversations)
     .where(eq(conversations.projectId, id))
     .all();
+
+  // Worktrees are removed only when clean and merged; the others stay on disk and are reported.
+  const worktreesKept: { path: string; branch: string }[] = [];
+  for (const conv of projectConversations) {
+    if (!conv.worktreePath || !conv.worktreeBranch) continue;
+    if (!removeWorktree(project.path, conv.worktreePath, conv.worktreeBranch).ok) {
+      worktreesKept.push({ path: conv.worktreePath, branch: conv.worktreeBranch });
+    }
+  }
 
   try {
     // Delete child tables first (respect FK order)
@@ -300,7 +310,7 @@ app.delete("/:id", async (c) => {
       rmSync(project.path, { recursive: true, force: true });
     }
 
-    return c.json({ ok: true, deletedFolder: deleteFolder });
+    return c.json({ ok: true, deletedFolder: deleteFolder, worktreesKept });
   } catch (err) {
     return c.json({ error: `Deletion failed: ${err}` }, 500);
   }

@@ -15,6 +15,7 @@ import { TodosTab } from "./components/TodosTab.js";
 import { WorkspacesTab } from "./components/WorkspacesTab.js";
 import { WorkspaceOnboarding } from "./components/WorkspaceOnboarding.js";
 import { InsightsTab } from "./components/InsightsTab.js";
+import { NewBranchDialog } from "./components/NewBranchDialog.js";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
@@ -127,25 +128,35 @@ export function App() {
 
   const subConvBadge = subConvs.filter((c) => c.running || c.unread).length;
 
-  const handleCreateBranch = useCallback(
-    async ({ contextText, title }: { contextText: string; title: string }) => {
+  // Creating a branch first asks whether it gets its own worktree (NewBranchDialog).
+  const [pendingBranch, setPendingBranch] = useState<{ contextText: string; title: string } | null>(null);
+  const [subConvNotice, setSubConvNotice] = useState<string | null>(null);
+
+  const handleCreateBranch = useCallback((payload: { contextText: string; title: string }) => {
+    if (selectedRef.current) setPendingBranch(payload);
+  }, []);
+
+  const confirmCreateBranch = useCallback(
+    async (opts: { worktree: false } | { worktree: { name: string } }): Promise<string | null> => {
       const proj = selectedRef.current;
-      if (!proj) return;
+      if (!proj || !pendingBranch) return null;
       try {
         const res = await fetch("/api/conversations/sub", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId: proj.id, contextText, title }),
+          body: JSON.stringify({ projectId: proj.id, ...pendingBranch, ...(opts.worktree ? { worktree: opts.worktree } : {}) }),
         });
-        if (!res.ok) return;
-        const conv: SubConversation = await res.json();
-        setOpenSubConv(conv);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return data.error ?? "Could not create the branch.";
+        setPendingBranch(null);
+        setOpenSubConv(data as SubConversation);
         refreshSubConvs();
-      } catch {
-        // ignore
+        return null;
+      } catch (err) {
+        return String(err);
       }
     },
-    [refreshSubConvs]
+    [pendingBranch, refreshSubConvs]
   );
 
   const handleOpenSubConv = useCallback((conv: SubConversation) => {
@@ -170,7 +181,14 @@ export function App() {
   const handleDeleteSubConv = useCallback((id: number) => {
     if (openSubConvRef.current?.id === id) setOpenSubConv(null);
     fetch(`/api/conversations/${id}`, { method: "DELETE" })
-      .then(() => refreshSubConvs())
+      .then((r) => r.json())
+      .then((d) => {
+        // A worktree holding unsaved work is kept on disk: say where, since the row is gone.
+        if (d?.worktree && !d.worktree.removed) {
+          setSubConvNotice(`Worktree conservé (${d.worktree.reason ?? "travail non sauvegardé"}) : ${d.worktree.path} — branche ${d.worktree.branch}`);
+        }
+        refreshSubConvs();
+      })
       .catch(() => {});
   }, [refreshSubConvs]);
 
@@ -598,6 +616,8 @@ export function App() {
                       conversations={subConvs}
                       onOpen={handleOpenSubConv}
                       onDelete={handleDeleteSubConv}
+                      notice={subConvNotice}
+                      onDismissNotice={() => setSubConvNotice(null)}
                     />
                   </div>
                 )}
@@ -626,6 +646,13 @@ export function App() {
             </div>
           )}
         </SidebarInset>
+        {selected && pendingBranch && (
+          <NewBranchDialog
+            title={pendingBranch.title}
+            onConfirm={confirmCreateBranch}
+            onCancel={() => setPendingBranch(null)}
+          />
+        )}
         {selected && openSubConv && (
           <SubConversationModal
             project={selected}

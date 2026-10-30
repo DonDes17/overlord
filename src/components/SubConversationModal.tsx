@@ -44,6 +44,14 @@ export function SubConversationModal({ project, conversation, onClose }: Props) 
           <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
             branch
           </span>
+          {conversation.worktreeBranch && (
+            <span
+              className="truncate rounded border border-sky-400/40 px-1.5 py-0.5 font-mono text-[10px] text-sky-400"
+              title={conversation.worktreePath ?? undefined}
+            >
+              worktree · {conversation.worktreeBranch}
+            </span>
+          )}
           <div className="ml-auto flex items-center gap-1">
             {conversation.contextText && (
               <button

@@ -43,6 +43,13 @@ export function sendMessage(session: AgentSession, message: string) {
     return;
   }
 
+  if (!existsSync(session.projectPath)) {
+    // Typically a worktree deleted by hand. Never fall back to the main folder: that would defeat the isolation.
+    broadcast(session, { type: "agent:raw", data: `Le dossier de travail n'existe plus : ${session.projectPath}` });
+    broadcast(session, { type: "agent:done", code: 1 });
+    return;
+  }
+
   const snapshotSha = createGitSnapshot(session.projectPath);
   console.log(`[agent:${session.projectId}] snapshot: ${snapshotSha ?? "none"}`);
 

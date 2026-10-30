@@ -8,6 +8,9 @@ interface Props {
   conversations: SubConversation[];
   onOpen: (conv: SubConversation) => void;
   onDelete: (id: number) => void;
+  /** Shown when a deleted branch left its worktree on disk. */
+  notice?: string | null;
+  onDismissNotice?: () => void;
 }
 
 function timeAgo(iso: string): string {
@@ -23,7 +26,7 @@ function timeAgo(iso: string): string {
   return `${d}d ago`;
 }
 
-export function ConversationsTab({ project, conversations, onOpen, onDelete }: Props) {
+export function ConversationsTab({ project, conversations, onOpen, onDelete, notice, onDismissNotice }: Props) {
   const handleDelete = useCallback(
     (e: React.MouseEvent, id: number) => {
       e.stopPropagation();
@@ -39,6 +42,13 @@ export function ConversationsTab({ project, conversations, onOpen, onDelete }: P
         <h2 className="text-sm font-semibold">Conversations</h2>
         <span className="text-xs text-muted-foreground">— {project.name}</span>
       </div>
+
+      {notice && (
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs text-amber-300">
+          <span className="min-w-0 flex-1 break-words">{notice}</span>
+          <button onClick={onDismissNotice} className="shrink-0 hover:text-foreground" aria-label="Dismiss">✕</button>
+        </div>
+      )}
 
       {conversations.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border py-12 text-center">
@@ -78,6 +88,21 @@ export function ConversationsTab({ project, conversations, onOpen, onDelete }: P
                   {conv.running && (
                     <span className="shrink-0 rounded bg-green-400/15 px-1.5 py-0.5 text-[10px] font-medium text-green-400">
                       running
+                    </span>
+                  )}
+                  {conv.worktreeBranch && (
+                    <span
+                      className="shrink-0 truncate rounded border border-sky-400/40 px-1.5 py-0.5 font-mono text-[10px] text-sky-400"
+                      title={
+                        conv.worktree
+                          ? `${conv.worktree.changed} modified file(s), ${conv.worktree.ahead} unmerged commit(s)\n${conv.worktreePath ?? ""}`
+                          : (conv.worktreePath ?? undefined)
+                      }
+                    >
+                      ⎇ {conv.worktreeBranch}
+                      {conv.worktree && (conv.worktree.changed > 0 || conv.worktree.ahead > 0) && (
+                        <span className="ml-1 text-amber-400">● {conv.worktree.changed > 0 ? `${conv.worktree.changed}~` : ""}{conv.worktree.ahead > 0 ? `${conv.worktree.ahead}↑` : ""}</span>
+                      )}
                     </span>
                   )}
                   {!conv.running && conv.unread && (
