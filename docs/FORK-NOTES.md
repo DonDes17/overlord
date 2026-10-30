@@ -22,6 +22,9 @@ Ce fichier sert de contexte pour Claude Code quand on travaille sur ce repo.
   (alias : `cd ~/Desktop/overlord && OVERLORD_NODE_PATH="$(which node)" npm run dev:electron`).
   `OVERLORD_NODE_PATH` est obligatoire : sinon Electron lance le backend en `ELECTRON_RUN_AS_NODE`,
   qui n’a pas les globals Web (`Request`) → crash Hono `Class extends value undefined`.
+- **Node doit être la v22** au lancement : `better-sqlite3` est compilé pour elle. Avec une autre version
+  (par exemple la v20 après un redémarrage), le backend plante avec `NODE_MODULE_VERSION 127 … requires
+  115`. Remède : `nvm use 22` (et `nvm alias default 22` pour le fixer), sans recompiler.
 - Mode navigateur : `npm run dev` (passe par tsx, pas besoin du fix).
 - Réinstallation propre : `rm -rf node_modules package-lock.json && npm install`.
 - Skills plugins visibles dans l’onglet Skills : `sync-skills` après chaque install/MAJ de plugin
@@ -30,8 +33,9 @@ Ce fichier sert de contexte pour Claude Code quand on travaille sur ce repo.
 
 ## Fonctionnement d’Overlord à connaître
 
-- Le chat lance `claude --print` (headless). Les commandes interactives du CLI (`/clear`, `/compact`,
-  `/resume`, `/permissions`, `/rewind`…) apparaissent dans l’autocomplétion mais **ne font rien**.
+- Le chat lance `claude --print` (headless). Les commandes interactives du CLI (`/compact`,
+  `/permissions`, `/rewind`…) apparaissent dans l’autocomplétion mais **ne font rien**.
+  (`/clear` et `/resume` sont désormais gérées par Overlord, voir ci-dessous.)
 - Overlord intercepte ses propres commandes : `/model`, `/stop`, `/cost`, `/branch`, `/clear`, `/resume`, `/plan`, `/worktree`, `/help`
   (`OVERLORD_COMMANDS` et `handleSend` dans `src/components/ChatTab.tsx`).
   Les commandes perso et plugins (`/aidd-*`…) passent au CLI et fonctionnent.
@@ -149,11 +153,27 @@ diffs, undo).
 - **Suppression** d'une branche ou d'un projet : le worktree n'est retiré que s'il est propre et sans
   commit non fusionné ; sinon il reste sur disque, avec son chemin affiché (bandeau dans l'onglet
   Conversations). L'onglet affiche `⎇ overlord/…` avec `n~` fichiers modifiés et `n↑` commits en avance.
-- **Récupérer le travail** : fusionner `overlord/<nom>` soi-même depuis le dépôt principal (`git merge`
-  ou PR), puis `/worktree -d`.
+- **Récupérer le travail** (pas d'interface de fusion) :
+  1. commiter dans le worktree (demander à l'agent « commite », ou `git add -A && git commit` dans le dossier
+     donné par `/worktree`) : sans commit, rien n'est sauvegardé dans la branche git ;
+  2. depuis le **dépôt principal** : `git switch main && git merge overlord/<nom>`, ou pousser la branche et
+     ouvrir une PR (`git push -u origin overlord/<nom>` puis `gh pr create`) ;
+  3. `/worktree -d` dans la branche : supprime le dossier et la branche git une fois fusionnée.
+  Pièges : deux branches qui touchent le même fichier donnent un conflit à la seconde fusion ; des
+  modifications non commitées dans le dépôt principal peuvent bloquer le `git merge` ; après un
+  `git merge --squash`, git juge la branche non fusionnée, donc `/worktree -d --force` est nécessaire.
 - Fichiers : `server/agent/git-worktree.ts` (nouveau), colonnes `worktree_path` / `worktree_branch`
   (`conversations`), `server/routes/conversations.ts`, `server/index.ts` (`pathFor`),
   `src/components/NewBranchDialog.tsx` (nouveau), `ConversationsTab.tsx`, `SubConversationModal.tsx`.
+
+### 8. Corrections de la saisie — `fix/slash-enter-caret`
+
+- Entrée sur une commande `/` **déjà tapée en entier** (`/plan`) l'envoie ; avant, elle ne faisait que
+  l'autocompléter (`/plan ` avec un espace), ce qui obligeait à un second Entrée. Tab complète toujours,
+  et Entrée complète la commande surlignée quand ce qui est tapé n'est qu'un début (`/pl`).
+- `RichPasteInput` reconstruit son contenu quand la valeur change de l'extérieur et perdait le curseur
+  (il sautait avant le `/`). Il est maintenant replacé à la fin, seulement si l'éditeur a le focus.
+- Fichiers : `src/components/ChatTab.tsx` (`handleKeyDown`), `src/components/RichPasteInput.tsx`.
 
 ## Limites connues
 
@@ -174,6 +194,7 @@ diffs, undo).
 | 5 ✅ | `/clear` et `/resume` | `feat/session-cmds` |
 | 6 ✅ | `/plan` (`--permission-mode plan`) | `feat/plan-mode` |
 | 7 ✅ | Worktrees : deux tâches en parallèle sur un même repo | `feat/worktrees` |
+| — | `/merge` : commit + fusion + nettoyage d'un worktree depuis Overlord (gérer les conflits) | à définir |
 | — | Annulation par bloc (hunk) dans la fenêtre de diff | à définir |
 | — | Index temporaire aussi dans `rollbackToSnapshot` | à définir |
 
@@ -184,6 +205,14 @@ diffs, undo).
 - Lancement du CLI : `server/agent/send-message.ts`.
 - Thème : toujours sombre (`<html class="dark">` dans `index.html`).
 - Vérifier avant de committer : `npx tsc --noEmit -p .` puis `npx vite build`.
+- Données locales : base SQLite `~/.overlord/overlord.db`, worktrees `~/.overlord/worktrees/`.
+- Tester la logique serveur sans toucher à ces données : script `tsx` (Node 22) lancé avec un `HOME`
+  temporaire (`HOME=$(mktemp -d) npx tsx test.mts`), qui appelle les modules (`git-worktree.ts`…) ou
+  les routes Hono en mémoire (`app.request("/sub", …)`) sur un dépôt git jetable. Un script placé hors du
+  projet doit importer `drizzle-orm` par son chemin absolu.
+- Tester l'interface (worktrees) : projet jetable hors du Bureau, deux branches avec worktree lancées en
+  même temps sur le même fichier, vérifier que les diffs restent séparés et que le dépôt principal est
+  intact, puis supprimer une branche propre (dossier retiré) et une branche modifiée (dossier conservé).
 
 ## Pièges rencontrés
 
@@ -193,3 +222,7 @@ diffs, undo).
 - Une PR se crée sur le fork avec `gh pr create --repo DonDes17/overlord --base main --head <branche>`
   (sans `--repo`, `gh` vise `poptocrack/overlord`). Fixer une fois : `gh repo set-default DonDes17/overlord`.
 - `gh pr create --fill` échoue sans `origin/main` en local : faire `git fetch origin` avant.
+- Un test qui crée des worktrees ou une base doit se faire avec un `HOME` temporaire, sinon il écrit dans
+  le vrai `~/.overlord`.
+- `/branch <nom>` ne crée plus rien tout seul (`/branch -c <nom>`) : avec la création implicite, une faute
+  de frappe sur un nom de branche créait une branche par erreur (cas vécu avec `main` absent d'un projet).
