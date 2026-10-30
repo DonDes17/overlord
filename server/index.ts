@@ -32,7 +32,7 @@ import { attachWsHandlers } from "./agent/ws-handler.js";
 import { agentSessions, getOrCreateSession, loadSessionFromDb, resolveProjectPath, sessionKey, saveEventsNow } from "./agent/sessions.js";
 import { isValidSessionId, listClaudeSessions, sessionFileExists } from "./agent/claude-sessions.js";
 import { getCommitsSince, rollbackToSnapshot } from "./agent/git-snapshot.js";
-import { isValidSha, revertTurn, turnDiff } from "./agent/git-diff.js";
+import { isValidSha, revertHunk, revertTurn, turnDiff } from "./agent/git-diff.js";
 import { createBranch, currentBranch, deleteBranch, listBranches, switchBranch } from "./agent/git-branch.js";
 import type { Channel } from "./agent/types.js";
 
@@ -509,12 +509,17 @@ app.post("/api/agent/resume", async (c) => {
 
 // Undo the changes of a turn (or of some of its files) on the working tree.
 app.post("/api/agent/revert", async (c) => {
-  const { projectId, fromSha, toSha, paths, channel: rawChannel } = await c.req.json();
+  const { projectId, fromSha, toSha, paths, hunk, channel: rawChannel } = await c.req.json();
   const channel = parseChannel(rawChannel);
   if (!projectId || !channel || !isValidSha(fromSha)) return c.json({ ok: false, error: "projectId and a valid fromSha are required" }, 400);
   if (toSha !== undefined && toSha !== null && !isValidSha(toSha)) return c.json({ ok: false, error: "Invalid toSha" }, 400);
   if (paths !== undefined && (!Array.isArray(paths) || paths.some((p) => typeof p !== "string" || !p || p.startsWith("-") || p.startsWith("/") || p.split("/").includes("..")))) {
     return c.json({ ok: false, error: "Invalid paths" }, 400);
+  }
+
+  const safePath = (p: unknown) => typeof p === "string" && !!p && !p.startsWith("-") && !p.startsWith("/") && !p.split("/").includes("..");
+  if (hunk !== undefined && !(safePath(hunk?.path) && Number.isInteger(hunk?.index) && hunk.index >= 0 && typeof hunk?.header === "string" && hunk.header.startsWith("@@ ") && hunk.header.length < 500)) {
+    return c.json({ ok: false, error: "Invalid hunk" }, 400);
   }
 
   const project = db.select().from(projects).where(eq(projects.id, Number(projectId))).get();
@@ -526,7 +531,9 @@ app.post("/api/agent/revert", async (c) => {
   }
 
   try {
-    const result = revertTurn(path, fromSha, toSha ?? undefined, paths);
+    const result = hunk
+      ? revertHunk(path, fromSha, toSha ?? undefined, hunk.path, hunk.index, hunk.header)
+      : revertTurn(path, fromSha, toSha ?? undefined, paths);
     return c.json(result, result.ok ? 200 : 500);
   } catch (err) {
     return c.json({ ok: false, error: String(err) }, 500);

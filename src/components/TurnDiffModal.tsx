@@ -72,6 +72,59 @@ export function TurnDiffModal({
     };
   }, [projectId, channel, fromSha, toSha, reload]);
 
+  // Blocks already undone: for a past turn the diff is between two fixed snapshots and does not
+  // change after an undo, so the button must say so instead of offering the same undo again.
+  const undoneHunks = useRef(new Set<string>());
+  const armed = useRef<{ btn: HTMLButtonElement; timer: number } | null>(null);
+
+  const disarm = () => {
+    if (!armed.current) return;
+    window.clearTimeout(armed.current.timer);
+    armed.current.btn.dataset.confirm = "";
+    armed.current.btn.textContent = "↶ Undo block";
+    armed.current.btn.classList.remove("hunk-undo-confirm");
+    armed.current = null;
+  };
+
+  const undoHunk = async (btn: HTMLButtonElement) => {
+    const { path, index, header } = btn.dataset;
+    disarm();
+    setUndoing(true);
+    setUndoError(null);
+    try {
+      const r = await fetch("/api/agent/revert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, channel, fromSha, toSha, hunk: { path, index: Number(index), header } }),
+      });
+      const d = await r.json();
+      if (!d.ok) setUndoError(d.error ?? "Undo failed.");
+      else {
+        undoneHunks.current.add(`${path}#${header}`);
+        setReload((n) => n + 1);
+      }
+    } catch (err) {
+      setUndoError(String(err));
+    } finally {
+      setUndoing(false);
+    }
+  };
+
+  const onDiffClick = (e: React.MouseEvent) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(".hunk-undo");
+    if (!btn || btn.disabled || undoing) return;
+    if (btn.dataset.confirm === "1") {
+      void undoHunk(btn);
+      return;
+    }
+    // First click arms the button; it disarms itself after a few seconds.
+    disarm();
+    btn.dataset.confirm = "1";
+    btn.textContent = "Click again to confirm";
+    btn.classList.add("hunk-undo-confirm");
+    armed.current = { btn, timer: window.setTimeout(disarm, 4000) };
+  };
+
   const undo = async (key: string, paths?: string[]) => {
     if (confirm !== key) {
       setConfirm(key);
@@ -119,6 +172,38 @@ export function TurnDiffModal({
       colorScheme: (dark ? "dark" : "light") as ColorSchemeType,
     });
   }, [data?.patch, layout]);
+
+  // diff2html cannot add buttons to its hunk headers, so they are injected after each render.
+  // A block is addressed by its position in the file and its header; the server checks both.
+  useEffect(() => {
+    const root = bodyRef.current;
+    if (!root) return;
+    // Renamed files show "old → new" in the header and are not in this list: no per-block undo for them.
+    const known = new Set((data?.files ?? []).filter((f) => !f.binary && !f.lockfile).map((f) => f.path));
+    root.querySelectorAll<HTMLElement>(".d2h-file-wrapper").forEach((wrapper) => {
+      const path = wrapper.querySelector(".d2h-file-name")?.textContent?.trim() ?? "";
+      if (!known.has(path)) return;
+      // Side by side draws two tables with the same headers: the first one is enough.
+      const table = wrapper.querySelector(".d2h-file-side-diff, .d2h-file-diff");
+      table?.querySelectorAll<HTMLElement>("td.d2h-info:not([class*=linenumber]) :is(.d2h-code-line, .d2h-code-side-line)").forEach((line, index) => {
+        let btn = line.querySelector<HTMLButtonElement>(".hunk-undo");
+        if (!btn) {
+          const header = line.textContent?.trim() ?? "";
+          btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "hunk-undo";
+          btn.title = "Revert this block only";
+          btn.textContent = "↶ Undo block";
+          Object.assign(btn.dataset, { path, index: String(index), header });
+          line.appendChild(btn);
+        }
+        if (undoneHunks.current.has(`${path}#${btn.dataset.header}`)) {
+          btn.disabled = true;
+          btn.textContent = "✓ Undone";
+        }
+      });
+    });
+  }, [rendered, data?.files]);
 
   const files = data?.files ?? [];
   const totals = files.reduce((t, f) => ({ added: t.added + f.added, deleted: t.deleted + f.deleted }), { added: 0, deleted: 0 });
@@ -246,7 +331,7 @@ export function TurnDiffModal({
                   The diff is too large and was cut. Open the project in your editor to see the rest.
                 </p>
               )}
-              <div className="overlord-diff text-xs" dangerouslySetInnerHTML={{ __html: rendered }} />
+              <div className="overlord-diff text-xs" onClick={onDiffClick} dangerouslySetInnerHTML={{ __html: rendered }} />
             </div>
           </div>
         )}
