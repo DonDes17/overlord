@@ -229,7 +229,7 @@ function SkillCard({ skill, onClick, onDelete }: { skill: Skill; onClick: () => 
 function SkillViewer({ skill, content, onDelete, onClose }: { skill: Skill; content: string | null; onDelete: () => void; onClose: () => void }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+      className="desktop-titlebar-no-drag fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
       onClick={onClose}
     >
       <div

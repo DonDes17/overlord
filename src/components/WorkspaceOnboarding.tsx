@@ -62,7 +62,7 @@ export function WorkspaceOnboarding({ initialPath, onComplete, onCancel }: Works
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/95 p-6 backdrop-blur-xl">
+    <div className="desktop-titlebar-no-drag fixed inset-0 z-[100] flex items-center justify-center bg-background/95 p-6 backdrop-blur-xl">
       <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl">
         <div className="mb-6 flex items-start gap-4">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-secondary">
