@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Square, Copy, Check, ArrowDown, Undo2, Plus, SendHorizontal, Pencil, X, GitBranch, FileDiff } from "lucide-react";
+import { Square, Copy, Check, ArrowDown, Undo2, Plus, SendHorizontal, Pencil, X, GitBranch, FileDiff, Gauge } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { MarkdownContent } from "./MarkdownContent.js";
 import { ToolUseCard } from "./ToolUseCard.js";
@@ -224,7 +224,7 @@ function FileBadge({ file }: { file: FileBlock }) {
       : `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-md bg-primary-foreground/20 border border-primary-foreground/30 px-2 py-0.5 text-[11px] font-mono cursor-default"
+      className="inline-flex items-center gap-1 rounded-md bg-foreground/10 border border-foreground/20 px-2 py-0.5 text-[11px] font-mono cursor-default"
       title={`${file.path} • ${sizeLabel}`}
     >
       📄 {file.filename} ({sizeLabel})
@@ -237,7 +237,7 @@ function PastedBadge({ block }: { block: PastedBlock }) {
 
   return (
     <span
-      className="relative inline-flex items-center rounded-md bg-primary-foreground/20 border border-primary-foreground/30 px-2 py-0.5 text-[11px] font-mono cursor-default"
+      className="relative inline-flex items-center rounded-md bg-foreground/10 border border-foreground/20 px-2 py-0.5 text-[11px] font-mono cursor-default"
       onMouseEnter={() => setShowPreview(true)}
       onMouseLeave={() => setShowPreview(false)}
     >
@@ -282,7 +282,7 @@ function AddToTodoButton({ content, projectId }: { content: string; projectId: n
           )}
         </span>
       </TooltipTrigger>
-      <TooltipContent side="left" className="text-xs">
+      <TooltipContent side="top">
         Add to todos
       </TooltipContent>
     </Tooltip>
@@ -303,7 +303,7 @@ function BranchButton({ onBranch }: { onBranch: () => void }) {
           <GitBranch className="h-3 w-3" />
         </span>
       </TooltipTrigger>
-      <TooltipContent side="left" className="text-xs">
+      <TooltipContent side="top">
         Open a branch conversation from here
       </TooltipContent>
     </Tooltip>
@@ -359,7 +359,7 @@ const UserMessage = React.memo(function UserMessage({
   }, [entry, projectId, onRollback]);
 
   return (
-    <div className="group/user ml-auto max-w-[80%]">
+    <div className="group/user relative ml-auto mt-4 max-w-[85%] first:mt-0">
       {/* Confirm dialog */}
       {confirmNeeded && (
         <div className="mb-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -381,7 +381,7 @@ const UserMessage = React.memo(function UserMessage({
         </div>
       )}
 
-      <div className="relative rounded-lg bg-primary px-4 py-3 text-primary-foreground">
+      <div className="relative rounded-2xl rounded-br-md bg-secondary px-4 py-2.5 text-foreground">
         {/* Rollback button */}
         {entry.snapshotSha && (
           <button
@@ -393,24 +393,20 @@ const UserMessage = React.memo(function UserMessage({
             <Undo2 className="h-3.5 w-3.5 text-muted-foreground" />
           </button>
         )}
-        <div className="mb-1.5 flex items-center justify-between gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider opacity-50">
-            You
-          </span>
-          <span className="-mr-1 -mt-1 flex items-center text-primary-foreground/70">
-            {entry.snapshotSha && (
-              <button
-                onClick={() => setShowDiff(true)}
-                className="flex h-6 w-6 items-center justify-center rounded-md opacity-0 group-hover/user:opacity-100 transition-opacity hover:bg-primary-foreground/15"
-                title="See the changes made during this turn"
-              >
-                <FileDiff className="h-3.5 w-3.5" />
-              </button>
-            )}
-            {onBranch && <BranchButton onBranch={onBranch} />}
-          </span>
-        </div>
-        <div className="text-sm leading-relaxed select-text">
+        {/* Actions float above the bubble on hover: no label row taking space in every message */}
+        <span className="absolute -top-3 right-3 z-10 flex items-center rounded-md border border-border bg-card text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover/user:opacity-100 focus-within:opacity-100">
+          {entry.snapshotSha && (
+            <button
+              onClick={() => setShowDiff(true)}
+              className="flex h-6 w-6 items-center justify-center rounded-md hover:bg-secondary hover:text-foreground"
+              title="See the changes made during this turn"
+            >
+              <FileDiff className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {onBranch && <BranchButton onBranch={onBranch} />}
+        </span>
+        <div className="text-[15px] leading-relaxed select-text">
           {entry.displayContent ? (
             <InlineDisplay content={entry.displayContent} blocks={entry.pastedBlocks ?? []} files={entry.fileBlocks} />
           ) : (entry.pastedBlocks?.length || entry.fileBlocks?.length) ? (
@@ -450,34 +446,30 @@ const MessageBubble = React.memo(function MessageBubble({ content, projectId, on
   }, [content]);
 
   return (
-    <div className="group/msg relative max-w-[90%] rounded-lg border border-border bg-card px-4 py-3">
-      <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-wider opacity-50">
-          Claude
-        </span>
-        <div className="flex items-center gap-0.5">
-          {onBranch && <BranchButton onBranch={onBranch} />}
-          <AddToTodoButton content={content} projectId={projectId} />
-          <Tooltip>
-            <TooltipTrigger>
-              <span
-                role="button"
-                onClick={handleCopy}
-                className="flex h-6 w-6 items-center justify-center rounded-md opacity-0 transition-opacity group-hover/msg:opacity-100 hover:bg-secondary cursor-pointer"
-              >
-                {copied ? (
-                  <Check className="h-3 w-3 text-green-400" />
-                ) : (
-                  <Copy className="h-3 w-3 text-muted-foreground" />
-                )}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="left" className="text-xs">Copy markdown</TooltipContent>
-          </Tooltip>
-        </div>
+    <div className="group/msg relative">
+      {/* Actions float on hover; the answer itself stays a plain reading column */}
+      <div className="absolute -top-3 right-0 z-10 flex items-center gap-0.5 rounded-md border border-border bg-card opacity-0 shadow-sm transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100">
+        {onBranch && <BranchButton onBranch={onBranch} />}
+        <AddToTodoButton content={content} projectId={projectId} />
+        <Tooltip>
+          <TooltipTrigger>
+            <span
+              role="button"
+              onClick={handleCopy}
+              className="flex h-6 w-6 items-center justify-center rounded-md hover:bg-secondary cursor-pointer"
+            >
+              {copied ? (
+                <Check className="h-3 w-3 text-green-400" />
+              ) : (
+                <Copy className="h-3 w-3 text-muted-foreground" />
+              )}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top">Copy markdown</TooltipContent>
+        </Tooltip>
       </div>
       <div className="select-text">
-        <MarkdownContent content={content} />
+        <MarkdownContent content={content} className="text-[15px]!" />
       </div>
     </div>
   );
@@ -1282,6 +1274,23 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
     if (agentStatus === "idle") refreshBranch();
   }, [agentStatus, refreshBranch]);
 
+  // Session usage panel (header): closes on a click outside or Escape.
+  const [usageOpen, setUsageOpen] = useState(false);
+  const usageRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!usageOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!usageRef.current?.contains(e.target as Node)) setUsageOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setUsageOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [usageOpen]);
+
   // /plan: server-side flag, applies to the next messages of this conversation.
   const [planMode, setPlanMode] = useState(false);
   useEffect(() => {
@@ -1799,7 +1808,7 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3">
         <div className="flex items-center gap-3 min-w-0">
-          <span className="font-mono text-sm text-primary">
+          <span className="font-mono text-sm text-foreground">
             claude @ {project.name}
           </span>
           {planMode && (
@@ -1870,44 +1879,30 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
             </span>
           )}
           {tokenStats.turns > 0 && (
-            <Tooltip>
-              <TooltipTrigger>
-                <div className="hidden sm:flex items-center gap-2 text-[10px] text-muted-foreground font-mono cursor-help">
-                  <span>{formatTokens(tokenStats.inputTokens)} in</span>
-                  <span>{formatTokens(tokenStats.outputTokens)} out</span>
-                  {tokenStats.cacheReadTokens > 0 && (
-                    <span className="text-green-400/70">
-                      {formatTokens(tokenStats.cacheReadTokens)} cache
-                    </span>
-                  )}
-                  <span className="text-primary/70">
-                    ${tokenStats.totalCost.toFixed(4)}
-                  </span>
-                  {rtkSavings && rtkSavings.total_saved > 0 && rtkSavings.avg_savings_pct < 100 && (
-                    <span className="text-emerald-400 font-semibold">
-                      RTK -{Math.round(rtkSavings.avg_savings_pct)}%
-                    </span>
-                  )}
-                  {codegraphStatus.indexed && (
-                    <span className={cn(
-                      "font-semibold",
-                      codegraphStats.totalCalls > 0 ? "text-cyan-400" : "text-muted-foreground/60"
-                    )}>
-                      CG {codegraphStats.totalCalls}×{codegraphStats.totalCalls > 0 ? ` ~${formatTokens(codegraphStats.totalSaved)}` : ""}
-                    </span>
-                  )}
-                  {latencyStats && latencyStats.lastTTFT !== null && (
-                    <span className="text-amber-400/80">
-                      TTFT {formatMs(latencyStats.lastTTFT)}
-                    </span>
-                  )}
-                </div>
-              </TooltipTrigger>
-              <TooltipContent
-                side="bottom"
-                className="w-[720px] max-w-[calc(100vw-2rem)] items-start border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs leading-relaxed text-zinc-100 shadow-2xl [--tooltip-bg:theme(colors.zinc.950)]"
-              >
-                <div className="w-full space-y-1.5 font-sans">
+            // Usage numbers live behind a quiet button: they are rarely needed while reading.
+            <div className="relative" ref={usageRef}>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      onClick={() => setUsageOpen((o) => !o)}
+                      aria-expanded={usageOpen}
+                      aria-label="Session usage"
+                      className={cn(
+                        "flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground",
+                        usageOpen && "bg-secondary text-foreground"
+                      )}
+                    />
+                  }
+                >
+                  <Gauge className="h-4 w-4" />
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Session usage</TooltipContent>
+              </Tooltip>
+              {usageOpen && (
+                <div className="absolute right-0 top-full z-40 mt-2 w-[min(440px,calc(100vw-2rem))] rounded-lg border border-border bg-popover p-4 text-xs leading-relaxed text-popover-foreground shadow-xl">
+                <div className="w-full space-y-1.5">
                   <p><strong>{formatTokens(tokenStats.inputTokens)} in</strong>: tokens sent to Claude (your message + project context)</p>
                   <p><strong>{formatTokens(tokenStats.outputTokens)} out</strong>: tokens generated by Claude (its response)</p>
                   {tokenStats.cacheReadTokens > 0 && (
@@ -1972,8 +1967,9 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
                     </div>
                   )}
                 </div>
-              </TooltipContent>
-            </Tooltip>
+                </div>
+              )}
+            </div>
           )}
           <span
             className={cn(
@@ -2003,7 +1999,7 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
       )}
 
       {/* Messages */}
-      <div ref={scrollRef} onScroll={handleScroll} className="relative flex-1 min-h-0 overflow-y-auto p-4 space-y-3 scrollbar-visible select-text">
+      <div ref={scrollRef} onScroll={handleScroll} className="relative flex-1 min-h-0 overflow-y-auto py-4 px-[max(1rem,calc((100%-52rem)/2))] space-y-3 scrollbar-visible select-text">
         {firstLoadedIndex > 0 && (
           <div className="flex justify-center pt-1 pb-2">
             <Button
@@ -2065,12 +2061,9 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
         )}
 
         {streamingText && (
-          <div className="group/msg relative max-w-[90%] rounded-lg border border-border bg-card px-4 py-3">
-            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider opacity-50">
-              Claude
-            </div>
+          <div className="group/msg relative">
             <div className="select-text">
-              <MarkdownContent content={streamingText} />
+              <MarkdownContent content={streamingText} className="text-[15px]!" />
             </div>
             <span className="inline-block h-4 w-0.5 animate-pulse bg-primary ml-0.5" />
           </div>
@@ -2139,7 +2132,7 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
       )}
 
       {/* Input area */}
-      <div className="relative shrink-0 border-t border-border bg-card p-4">
+      <div className="relative shrink-0 border-t border-border bg-card py-4 px-[max(1rem,calc((100%-52rem)/2))]">
         {showSlash && filteredCommands.length > 0 && (
           <div className="absolute bottom-full left-4 right-4 mb-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-popover shadow-lg scrollbar-visible">
             {filteredCommands.map((cmd, i) => (

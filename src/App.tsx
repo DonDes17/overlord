@@ -20,6 +20,7 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/s
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { TitleTooltips } from "@/components/ui/title-tooltips";
 import { ExternalLink, Menu } from "lucide-react";
 
 export type AgentStatusMap = Record<number, "none" | "idle" | "running" | "done" | "error">;
@@ -460,6 +461,7 @@ export function App() {
 
   return (
     <TooltipProvider>
+      <TitleTooltips />
       <SidebarProvider>
         <ProjectSidebar
           projects={projects ?? []}
