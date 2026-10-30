@@ -32,6 +32,7 @@ import { attachWsHandlers } from "./agent/ws-handler.js";
 import { agentSessions, sessionKey, saveEventsNow } from "./agent/sessions.js";
 import { getCommitsSince, rollbackToSnapshot } from "./agent/git-snapshot.js";
 import { isValidSha, revertTurn, turnDiff } from "./agent/git-diff.js";
+import { createBranch, currentBranch, deleteBranch, listBranches, switchBranch } from "./agent/git-branch.js";
 import type { Channel } from "./agent/types.js";
 
 const PORT = Number(process.env.PORT) || 4747;
@@ -391,6 +392,39 @@ app.post("/api/agent/diff", async (c) => {
   }
 });
 
+function isAgentRunning(projectId: number): boolean {
+  for (const [, session] of agentSessions) {
+    if (session.projectId === projectId && session.status === "running") return true;
+  }
+  return false;
+}
+
+// Current git branch of a project (shown in the chat header).
+app.get("/api/agent/branch", (c) => {
+  const projectId = Number(c.req.query("projectId"));
+  const project = db.select().from(projects).where(eq(projects.id, projectId)).get();
+  if (!project) return c.json({ ok: false, error: "Project not found" }, 404);
+  return c.json({ ok: true, ...currentBranch(project.path), branches: listBranches(project.path) });
+});
+
+// Switch to a branch (/branch <name>), create one (/branch -c <name>) or delete one (/branch -d <name>).
+app.post("/api/agent/branch", async (c) => {
+  const { projectId, name, action } = await c.req.json();
+  if (!projectId || typeof name !== "string" || !name.trim() || !["switch", "create", "delete"].includes(action)) {
+    return c.json({ ok: false, error: "projectId, name and a valid action are required" }, 400);
+  }
+
+  const project = db.select().from(projects).where(eq(projects.id, Number(projectId))).get();
+  if (!project) return c.json({ ok: false, error: "Project not found" }, 404);
+  if (isAgentRunning(project.id)) {
+    return c.json({ ok: false, error: "The agent is running on this project. Stop it before changing branches." }, 409);
+  }
+
+  const run = action === "create" ? createBranch : action === "delete" ? deleteBranch : switchBranch;
+  const result = run(project.path, name.trim());
+  return c.json({ ...result, ...currentBranch(project.path) }, result.ok ? 200 : 400);
+});
+
 // Undo the changes of a turn (or of some of its files) on the working tree.
 app.post("/api/agent/revert", async (c) => {
   const { projectId, fromSha, toSha, paths } = await c.req.json();
@@ -403,10 +437,8 @@ app.post("/api/agent/revert", async (c) => {
   const project = db.select().from(projects).where(eq(projects.id, Number(projectId))).get();
   if (!project) return c.json({ ok: false, error: "Project not found" }, 404);
 
-  for (const [, session] of agentSessions) {
-    if (session.projectId === Number(projectId) && session.status === "running") {
-      return c.json({ ok: false, error: "The agent is running on this project. Stop it before undoing changes." }, 409);
-    }
+  if (isAgentRunning(project.id)) {
+    return c.json({ ok: false, error: "The agent is running on this project. Stop it before undoing changes." }, 409);
   }
 
   try {

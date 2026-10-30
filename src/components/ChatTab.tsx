@@ -38,6 +38,7 @@ const OVERLORD_COMMANDS: SlashCmd[] = [
   { name: "model", description: "Changer le modèle — /model opus, ou /model pour lister", scope: "overlord", type: "overlord" },
   { name: "stop", description: "Stopper l'agent en cours", scope: "overlord", type: "overlord" },
   { name: "cost", description: "Afficher tokens et coût de la session", scope: "overlord", type: "overlord" },
+  { name: "branch", description: "Branches git — /branch <nom> bascule, /branch -c <nom> crée, /branch -d <nom> supprime, /branch liste", scope: "overlord", type: "overlord" },
   { name: "help", description: "Lister les commandes Overlord disponibles", scope: "overlord", type: "overlord" },
 ];
 const OVERLORD_COMMAND_NAMES = new Set(OVERLORD_COMMANDS.map((c) => c.name));
@@ -1260,6 +1261,19 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
     };
   }, [project.id, project.path, channel]);
 
+  // Current git branch, shown in the header. The agent can switch branches
+  // itself, so it is re-read whenever a run ends.
+  const [gitBranch, setGitBranch] = useState<{ branch: string | null; detached: boolean }>({ branch: null, detached: false });
+  const refreshBranch = useCallback(() => {
+    fetch(`/api/agent/branch?projectId=${project.id}`)
+      .then((r) => r.json())
+      .then((d) => d.ok && setGitBranch({ branch: d.branch, detached: !!d.detached }))
+      .catch(() => {});
+  }, [project.id]);
+  useEffect(() => {
+    if (agentStatus === "idle") refreshBranch();
+  }, [agentStatus, refreshBranch]);
+
   // Ephemeral info bubble for command output (not persisted — display only).
   const pushInfo = useCallback((text: string) => {
     setEntries((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: text }]);
@@ -1307,6 +1321,46 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
               `Usage : \`/model <nom>\``
           );
         }
+      } else if (cmd === "branch") {
+        const flagged = arg.match(/^(-d|--delete|-c|--create)\s+(\S+)$/);
+        const action = !flagged ? "switch" : flagged[1] === "-d" || flagged[1] === "--delete" ? "delete" : "create";
+        if (!arg) {
+          fetch(`/api/agent/branch?projectId=${project.id}`)
+            .then((r) => r.json())
+            .then((d) => {
+              if (!d.ok || !d.branch) return pushInfo("Ce projet n'est pas un dépôt git.");
+              // Listed most recently committed first; cap it, some repos have hundreds.
+              const MAX_LISTED = 20;
+              const others = (d.branches as string[]).filter((b) => b !== d.branch);
+              pushInfo(
+                `Branche actuelle : **${d.branch}**${d.detached ? " (HEAD détaché)" : ""}\n` +
+                  (others.length
+                    ? `Récentes : ${others.slice(0, MAX_LISTED).map((b) => `\`${b}\``).join(", ")}` +
+                      (others.length > MAX_LISTED ? ` … et ${others.length - MAX_LISTED} autres` : "") + "\n"
+                    : "") +
+                  `Usage : \`/branch <nom>\` (bascule), \`/branch -c <nom>\` (crée), \`/branch -d <nom>\` (supprime)`
+              );
+            })
+            .catch((err) => pushInfo(String(err)));
+        } else {
+          const name = flagged ? flagged[2] : arg;
+          fetch("/api/agent/branch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectId: project.id, name, action }),
+          })
+            .then((r) => r.json())
+            .then((d) => {
+              if (d.branch) setGitBranch({ branch: d.branch, detached: !!d.detached });
+              if (!d.ok) return pushInfo(`Échec : ${d.error}`);
+              pushInfo(
+                d.action === "created" ? `Branche **${name}** créée, vous êtes dessus.`
+                : d.action === "switched" ? `Basculé sur **${name}**.`
+                : `Branche **${name}** supprimée.`
+              );
+            })
+            .catch((err) => pushInfo(`Échec : ${String(err)}`));
+        }
       } else if (cmd === "help") {
         pushInfo(
           `**Commandes Overlord**\n` +
@@ -1319,7 +1373,7 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
       onInputChange("");
       return true;
     },
-    [project.id, channel, tokenStats, models, model, handleModelChange, pushInfo, onInputChange]
+    [project.id, channel, tokenStats, models, model, handleModelChange, pushInfo, onInputChange, gitBranch]
   );
 
   const handleSend = useCallback(() => {
@@ -1567,6 +1621,15 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
           <span className="font-mono text-sm text-primary">
             claude @ {project.name}
           </span>
+          {gitBranch.branch && (
+            <span
+              className="flex min-w-0 items-center gap-1 rounded border border-border px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+              title={gitBranch.detached ? "Detached HEAD" : "Current git branch"}
+            >
+              <GitBranch className="h-3 w-3 shrink-0" />
+              <span className="truncate">{gitBranch.branch}</span>
+            </span>
+          )}
           {learningsStatus === "generating" && (
             <Badge
               variant="outline"
