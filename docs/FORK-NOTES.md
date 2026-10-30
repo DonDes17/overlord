@@ -362,6 +362,31 @@ besoin de l'agent (`POST /api/conversations/:id/merge`, réponse avec `step`).
   chat reçoit `--output-format`, les analyses en arrière-plan non. Résultat vérifié : Summary masqué = 1 appel
   par tour ; affiché = 1 appel + 2 analyses.
 
+### 13. Nouveau logo — `feat/new-logo`
+
+- **Le logo** : une origine (cercle clair avec halo) qui alimente trois espaces de travail (carrés arrondis),
+  en bleu acier comme l'accent de l'interface : un orchestrateur et ses agents en parallèle, comme les
+  branches et worktrees de l'app. L'ancien (hub à six nœuds, dégradé indigo-cyan) devenait illisible à
+  16 et 32 px. Le nom « Overlord » est inchangé. Licence MIT : le code se modifie librement, mais le nom
+  et le logo d'origine sont la marque de l'auteur ; à renommer si une version était un jour diffusée.
+- **Tout est généré par un seul script** : `npx electron scripts/build-logo.cjs` (Electron ne sert qu'à
+  rastériser les SVG ; `icon.icns` demande macOS, `iconutil`). La géométrie est dans le script : pour changer
+  une forme ou une couleur, modifier `MASTER`, `SMALL` ou `ACCENT`, relancer, regarder le résultat.
+  Les SVG sources sont écrits dans `docs/logo/`.
+- **Deux dessins selon la taille** (un détail qui marche à 512 px est une bouillie à 16 px) : *master* (halo,
+  traits fins) à partir de 64 px, *small* (sans halo, traits et formes plus épais) de 16 à 48 px. Et trois
+  cadres : *icon* (carré arrondi avec marge, convention macOS : Dock, `icon.icns`, `icon-64…512.png`),
+  *flat* (même carré arrondi plein cadre : favicons, `.ico` Windows, docs) et *square* (sans arrondi : icônes
+  Apple, tuiles Windows, `overlord-logo-squared.png`, que les plateformes arrondissent elles-mêmes).
+- **Fichiers régénérés** : `public/favicons/*` (favicons, `.ico`, icônes Apple, tuiles), `electron/assets/*`
+  (PNG 16 à 512, `icon.ico`, `icon.icns`), `docs/overlord-logo-squared*.png` et `docs/overlord-banner.png`
+  (le mot « OVERLORD », en Montserrat 700, est ajusté automatiquement à la place laissée par le logo).
+  L'en-tête de la barre latérale utilise `favicon-128.png`, donc il suit tout seul.
+- **Piège** : sur un écran Retina, la capture d'Electron fait le double de la zone demandée ; le script rend à
+  double résolution puis réduit à la taille exacte (`quality: "best"`), ce qui donne un 16 px bien lissé.
+- macOS garde les icônes en cache : le Dock peut mettre quelques minutes, ou un redémarrage de l'app, à
+  afficher la nouvelle.
+
 ## Limites connues
 
 - `/merge` : le badge `worktree · …` de la fenêtre de la branche ne se met à jour qu'à sa réouverture ;
