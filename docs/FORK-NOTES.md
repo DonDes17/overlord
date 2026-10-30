@@ -345,9 +345,19 @@ besoin de l'agent (`POST /api/conversations/:id/merge`, réponse avec `step`).
   écrit `.claude/skills/project-learnings.md`). `isSummaryEnabled()` (`server/settings.ts`) coupe les deux
   tant que l'onglet est masqué. Ces appels laissaient aussi des sessions dans l'historique de la CLI
   (8 trouvées sur 155 dans `~/.claude/projects`).
-- **Insights** : calculé en local à partir des fichiers de session de Claude Code (aucun token), mais les
-  coûts affichés appliquent les tarifs Opus 4.x à tout (hypothèse de l'auteur « 99 % Opus ») : surestimés
-  pour un usage Sonnet. Non corrigé.
+- **Insights : coût par modèle** (`fix/insights-pricing`) : calculé en local à partir des fichiers de session
+  de Claude Code (aucun token). Les coûts appliquaient les tarifs Opus 4.x à tout (« 99 % Opus », hypothèse
+  de l'auteur) : sur cet historique (Sonnet 5.5, Sonnet 5, Opus 5.5, Haiku 5.5) l'ancien affichage était
+  **7,5 fois trop haut** (4 194 $ au lieu de 559 $). Maintenant `server/pricing.ts` donne le tarif de chaque
+  modèle et le coût est calculé **message par message** avec le modèle qui a répondu. Tarifs et
+  multiplicateurs de cache (écriture 1,25x ; lecture 0,1x sauf Opus 5.5 à 0,20 $, Fable 5.1 / Mythos 5.1 à
+  0,25 $, Fable 5 / Mythos 5 à 1 $) pris dans la référence officielle des modèles du 2026-10-06 ; Haiku 5.5
+  passe à 0,50 / 2,50 $ au-delà de 100K tokens de prompt (multiplicateurs de cache supposés inchangés).
+  Opus 4 / 4.1 gardent l'ancien tarif 15 / 75 $. **Un modèle absent de la table n'est pas deviné** : ses
+  tokens sont comptés dans `unpriced` (réponse de l'API) et la carte « Generated value » indique « excludes N
+  messages from unpriced models (…) ». Pour ajouter un modèle ou mettre à jour un prix : `PRICES` dans
+  `server/pricing.ts`. Les coûts restent une estimation (un abonnement peut ne pas facturer à l'usage ;
+  les écritures de cache sont comptées au tarif 5 minutes). Montants sous 10 $ affichés avec les centimes.
 - **Tester ces appels** : faux `claude` (`CLAUDE_PATH`) qui note chaque invocation dans un fichier ; le tour du
   chat reçoit `--output-format`, les analyses en arrière-plan non. Résultat vérifié : Summary masqué = 1 appel
   par tour ; affiché = 1 appel + 2 analyses.
