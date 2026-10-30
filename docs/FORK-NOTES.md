@@ -251,6 +251,37 @@ besoin de l'agent (`POST /api/conversations/:id/merge`, réponse avec `step`).
 - Vérifié dans Electron (page de test avec le CSS final, `document.elementFromPoint`) : zone élargie sur
   un bouton de 20 px, `absolute` conservé, boutons exclus inchangés.
 
+### 11. Palette et lisibilité du chat — `feat/chat-readability`
+
+- **Palette** (`.dark` dans `src/index.css`) : neutres légèrement teintés bleu-gris (teinte 255) au lieu
+  de gris purs, **un seul accent** (bleu acier `oklch(0.76 0.11 245)`) pour ce qui est interactif
+  (`--primary`, `--ring`, onglets, envoi, liens), et des couleurs d'état réservées : `--success`,
+  `--warning`, `--destructive` (aussi `text-success` / `text-warning`). Contrastes calculés : texte 17,4:1,
+  texte secondaire 7,9:1, accent 9,2:1 sur le fond. Avant, `--primary` était presque blanc, d'où la grosse
+  dalle claire pour les messages utilisateur.
+- **Colonne de lecture** : messages et zone de saisie dans une colonne centrée de 44 rem (environ 80
+  caractères à 15 px), via un `padding-inline` calculé (`max(1rem, calc((100% - 44rem) / 2))`).
+- **Messages** : plus d'étiquettes `YOU` / `CLAUDE` ; le message utilisateur est une bulle discrète
+  (`bg-secondary`, coin bas droit resserré) ; la réponse de l'agent est du texte simple, sans carte. Les
+  actions (diff, rollback, branche, todo, copier) flottent au survol au-dessus du message.
+- Le texte « claude @ projet » de l'en-tête n'est plus coloré : l'accent signale l'interactif.
+- **Une seule bulle d'aide** : le style de `Tooltip` (`tooltipSurface` dans `src/components/ui/tooltip.tsx`,
+  délai 300 ms) est aussi appliqué aux ~33 `title="…"` natifs par `TitleTooltips`
+  (`src/components/ui/title-tooltips.tsx`, monté une fois dans `App`) : au survol, le texte passe dans
+  `data-tooltip` (ce qui coupe la bulle du système) et `aria-label` garde le nom accessible des boutons
+  sans texte. Il suffit donc d'écrire `title="…"` pour avoir la bulle de l'app. Le style est dans un seul
+  endroit ; l'ancienne bulle sombre de 720 px des métriques a disparu.
+- **Métriques de session** : plus de ligne `in / out / cache / $ / RTK / CG / TTFT` dans l'en-tête ; un
+  bouton discret (jauge) ouvre un panneau avec le détail (se ferme par clic extérieur ou Échap).
+- **Largeur** : colonne de 52 rem ; seuls les paragraphes, listes et titres sont limités à 72 caractères,
+  les blocs de code, tableaux, commandes et la zone de saisie prennent toute la colonne.
+- **À faire** : migrer les ~100 couleurs Tailwind écrites en dur (`green`, `emerald`, `amber`, `yellow`,
+  `sky`, `cyan`, `blue`, `purple`, `violet`) vers `success`, `warning`, `destructive` et l'accent ; alléger
+  l'en-tête (métriques) et le bandeau CodeGraph ; pied de tour avec lien vers le diff.
+- **Méthode de vérification** : base temporaire (`HOME` factice) avec un projet et une conversation de
+  démonstration, serveur sur un autre port (`PORT=4799`, `dist/client` construit), puis Electron caché
+  (`BrowserWindow` avec `offscreen: true`, `capturePage()`) qui clique le projet et enregistre un PNG.
+
 ## Limites connues
 
 - `/merge` : le badge `worktree · …` de la fenêtre de la branche ne se met à jour qu'à sa réouverture ;
