@@ -286,6 +286,16 @@ besoin de l'agent (`POST /api/conversations/:id/merge`, réponse avec `step`).
   utilisé pour `node_modules` des worktrees) : après une indexation réussie, **et** à la première lecture
   du statut CodeGraph d'un projet déjà indexé (une fois par session de l'app), donc les anciens projets
   sont corrigés dès qu'on ouvre leur chat. Idempotent, sans effet hors d'un dépôt git.
+- **Pied de tour** (`feat/turn-footer`, `src/components/TurnFooter.tsx`) : sous le dernier message de chaque
+  tour qui a modifié des fichiers, une ligne `N files changed +x −y · View diff · Undo turn` : le diff et
+  l'undo ne se découvrent plus seulement en survolant un message. `Undo turn` demande un second clic (4 s),
+  comme dans la fenêtre de diff, et `View diff` ouvre cette même fenêtre. Les chiffres viennent de
+  `POST /api/agent/diff` avec `statsOnly: true` (liste de fichiers sans le patch, `turnDiffStats` dans
+  `git-diff.ts`) ; ils ne sont chargés que lorsque le pied de tour est à l'écran (`IntersectionObserver`),
+  donc un long historique ne lance pas un `git diff` par tour, et pour le dernier tour une fois l'agent
+  inactif. Un tour sans modification n'affiche rien. Un undo fait dans la fenêtre de diff rafraîchit le
+  pied de tour (`onReverted`). Le chat reste collé en bas quand un pied de tour apparaît, sauf si on a
+  remonté la conversation. Libellés en anglais comme le reste de la fonction diff.
 - **À faire** : migrer les ~100 couleurs Tailwind écrites en dur (`green`, `emerald`, `amber`, `yellow`,
   `sky`, `cyan`, `blue`, `purple`, `violet`) vers `success`, `warning`, `destructive` et l'accent ; alléger
   l'en-tête (métriques) et le bandeau CodeGraph ; pied de tour avec lien vers le diff.
