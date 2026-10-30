@@ -146,6 +146,46 @@ app.get("/sub/:projectId", (c) => {
   return c.json(result);
 });
 
+// GET /api/conversations/:id/worktree - path, branch and state of a branch's worktree (/worktree).
+app.get("/:id/worktree", (c) => {
+  const conv = db.select().from(conversations).where(eq(conversations.id, Number(c.req.param("id")))).get();
+  if (!conv) return c.json({ ok: false, error: "Not found" }, 404);
+  if (!conv.worktreePath || !conv.worktreeBranch) return c.json({ ok: true, worktree: null });
+  return c.json({
+    ok: true,
+    worktree: { path: conv.worktreePath, branch: conv.worktreeBranch, status: worktreeStatus(conv.worktreePath, conv.worktreeBranch) },
+  });
+});
+
+// DELETE /api/conversations/:id/worktree - drop the worktree but keep the conversation (/worktree -d).
+// The branch then works in the project folder. Refused when work would be lost, unless ?force=true.
+app.delete("/:id/worktree", (c) => {
+  const conv = db.select().from(conversations).where(eq(conversations.id, Number(c.req.param("id")))).get();
+  if (!conv) return c.json({ ok: false, error: "Not found" }, 404);
+  if (!conv.worktreePath || !conv.worktreeBranch) return c.json({ ok: false, error: "Cette branche n'a pas de worktree." }, 400);
+  const project = db.select().from(projects).where(eq(projects.id, conv.projectId)).get();
+  if (!project) return c.json({ ok: false, error: "Project not found" }, 404);
+
+  const session = agentSessions.get(sessionKey(conv.projectId, conv.channel as Channel));
+  if (session?.status === "running") {
+    return c.json({ ok: false, error: "L'agent tourne dans cette branche. Stoppez-le d'abord." }, 409);
+  }
+
+  const result = removeWorktree(project.path, conv.worktreePath, conv.worktreeBranch, c.req.query("force") === "true");
+  if (!result.ok) return c.json({ ok: false, error: result.error, status: result.status }, 409);
+
+  // Claude sessions belong to a folder: the old one cannot be resumed from the project folder.
+  db.update(conversations)
+    .set({ worktreePath: null, worktreeBranch: null, claudeSessionId: null })
+    .where(eq(conversations.id, conv.id))
+    .run();
+  if (session) {
+    session.projectPath = project.path;
+    session.claudeSessionId = null;
+  }
+  return c.json({ ok: true, warning: result.error });
+});
+
 // POST /api/conversations/:id/read - clear the unread flag for a branch.
 app.post("/:id/read", (c) => {
   const id = Number(c.req.param("id"));

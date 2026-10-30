@@ -36,11 +36,14 @@ function readLayout(): Layout {
 
 export function TurnDiffModal({
   projectId,
+  channel,
   fromSha,
   toSha,
   onClose,
 }: {
   projectId: number;
+  /** Conversation the turn belongs to: a branch may work in its own worktree. */
+  channel: string;
   fromSha: string;
   toSha?: string;
   onClose: () => void;
@@ -59,7 +62,7 @@ export function TurnDiffModal({
     fetch("/api/agent/diff", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId, fromSha, toSha }),
+      body: JSON.stringify({ projectId, channel, fromSha, toSha }),
     })
       .then((r) => r.json())
       .then((d: DiffResponse) => !cancelled && setData(d))
@@ -67,7 +70,7 @@ export function TurnDiffModal({
     return () => {
       cancelled = true;
     };
-  }, [projectId, fromSha, toSha, reload]);
+  }, [projectId, channel, fromSha, toSha, reload]);
 
   const undo = async (key: string, paths?: string[]) => {
     if (confirm !== key) {
@@ -81,7 +84,7 @@ export function TurnDiffModal({
       const r = await fetch("/api/agent/revert", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, fromSha, toSha, paths }),
+        body: JSON.stringify({ projectId, channel, fromSha, toSha, paths }),
       });
       const d = await r.json();
       if (!d.ok) setUndoError(d.error ?? "Undo failed.");

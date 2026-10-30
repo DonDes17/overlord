@@ -50,6 +50,10 @@ export interface SubConversation {
   running: boolean;
   hasEvents: boolean;
   preview: string;
+  /** Set when the branch runs in its own git worktree. */
+  worktreeBranch: string | null;
+  worktreePath: string | null;
+  worktree: { changed: number; ahead: number } | null;
 }
 
 export interface WorkspaceInfo {
