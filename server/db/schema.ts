@@ -55,6 +55,9 @@ export const conversations = sqliteTable("conversations", {
   parentConversationId: integer("parent_conversation_id"),
   contextText: text("context_text"),
   unread: integer("unread", { mode: "boolean" }).notNull().default(false),
+  // Optional git worktree isolating this branch from the main working tree.
+  worktreePath: text("worktree_path"),
+  worktreeBranch: text("worktree_branch"),
   createdAt: text("created_at")
     .notNull()
     .$defaultFn(() => new Date().toISOString()),
