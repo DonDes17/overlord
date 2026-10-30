@@ -215,7 +215,7 @@ export function SettingsTab({ project, onProjectUpdate }: Props) {
                   ))}
                 </div>
               </div>
-              <div>
+              <div className="mb-3">
                 <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Overlord MCP tools
                 </div>
@@ -246,7 +246,7 @@ export function SettingsTab({ project, onProjectUpdate }: Props) {
                         key={tool}
                         onClick={() => toggleTool(tool)}
                         title="Remove"
-                        className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-mono text-primary-foreground transition-colors hover:bg-primary/80"
+                        className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/15 px-2.5 py-1 text-xs font-mono text-primary transition-colors hover:border-destructive/40 hover:bg-destructive/15 hover:text-destructive"
                       >
                         {tool}
                         <Trash2 className="h-3 w-3 opacity-70" />
@@ -570,16 +570,20 @@ function IndexingCard({ project }: { project: Project }) {
   );
 }
 
+// Selected = tinted fill, accent border and a check, not a solid block: a long list of selected tools
+// stays readable, and the state is not carried by colour alone.
 function ToolToggle({ tool, label, selected, onToggle }: { tool: string; label?: string; selected: boolean; onToggle: (t: string) => void }) {
   return (
     <button
       onClick={() => onToggle(tool)}
-      className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-mono transition-colors ${
+      aria-pressed={selected}
+      className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-mono transition-colors ${
         selected
-          ? "bg-primary text-primary-foreground"
-          : "bg-secondary text-muted-foreground hover:text-foreground"
+          ? "border-primary/40 bg-primary/15 text-primary"
+          : "border-transparent bg-secondary text-muted-foreground hover:text-foreground"
       }`}
     >
+      {selected && <Check className="h-3 w-3" />}
       {label ?? tool}
     </button>
   );
