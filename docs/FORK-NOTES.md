@@ -32,14 +32,14 @@ Ce fichier sert de contexte pour Claude Code quand on travaille sur ce repo.
 
 - Le chat lance `claude --print` (headless). Les commandes interactives du CLI (`/clear`, `/compact`,
   `/resume`, `/permissions`, `/rewind`…) apparaissent dans l’autocomplétion mais **ne font rien**.
-- Overlord intercepte ses propres commandes : `/model`, `/stop`, `/cost`, `/help`
+- Overlord intercepte ses propres commandes : `/model`, `/stop`, `/cost`, `/branch`, `/help`
   (`OVERLORD_COMMANDS` et `handleSend` dans `src/components/ChatTab.tsx`).
   Les commandes perso et plugins (`/aidd-*`…) passent au CLI et fonctionnent.
 - Skills et hooks Claude Code s’appliquent dans le chat (un message = un `UserPromptSubmit`).
 - Les « branches » d’Overlord sont des **sous-conversations**, pas des branches git.
-- Avant chaque message, un snapshot git est pris (`server/agent/git-snapshot.ts` : `git add -A`,
-  `git stash create`, `git reset`) et stocké dans `snapshotSha` du message. Le rollback ↶ existant
-  revient à ce snapshot **et** tronque la conversation.
+- Avant chaque message, un snapshot git est pris (`server/agent/git-snapshot.ts` : `git add -A` +
+  `git stash create` sur une copie temporaire de l’index) et stocké dans `snapshotSha` du message.
+  Le rollback ↶ existant revient à ce snapshot **et** tronque la conversation.
 - Todos : SQLite local, pas d’intégration GitHub. « Send to chat » injecte la tâche comme prompt.
 - Projets filtrés par une seule racine de workspace (`isInWorkspace`), chemins absolus obligatoires.
 
@@ -72,22 +72,44 @@ clic de confirmation. La conversation n’est pas modifiée.
 - Route : `POST /api/agent/revert` (`projectId`, `fromSha`, `toSha?`, `paths?`).
 - L’agent n’est pas prévenu de l’annulation : le lui dire au message suivant.
 
-## Bug connu (pas encore corrigé)
+### 3. Snapshot qui préserve le staging — `fix/snapshot-keep-index`
 
-`createGitSnapshot` fait `git add -A` puis `git reset` : **tout ce qui était stagé est désindexé à
-chaque message envoyé**. Correctif prévu : prendre le snapshot sur une copie de l’index
-(même technique que `workingTreeSha` dans `git-diff.ts`). Bon candidat pour une PR upstream.
+`createGitSnapshot` travaille sur une copie temporaire de l’index (`GIT_INDEX_FILE`) : ce que vous
+aviez stagé reste stagé après l’envoi d’un message. Avant, `git add -A` puis `git reset` désindexait
+tout à chaque message. Bon candidat pour une PR upstream (un seul fichier).
+
+### 4. Commande `/branch` — `feat/branch-cmd`
+
+Gestion des branches git depuis le chat, plus la branche courante dans l’en-tête (badge `⎇`,
+relu à chaque fin d’exécution de l’agent, qui peut changer de branche lui-même).
+
+- `/branch` : branche courante + les 20 plus récentes (triées par dernier commit), « … et N autres ».
+- `/branch <nom>` : bascule sur une branche **existante** (erreur sinon, pas de création implicite).
+- `/branch -c <nom>` : crée depuis le HEAD actuel et bascule dessus.
+- `/branch -d <nom>` : `git branch -d` (refuse une branche non fusionnée ou la branche courante).
+  La suppression forcée (`-D`) reste au terminal, pour ne pas perdre de commits par erreur.
+- Les modifications non commitées suivent le changement de branche ; git refuse si elles seraient écrasées.
+- Refusé (409) tant que l’agent tourne sur le projet.
+- Fichiers : `server/agent/git-branch.ts` (nouveau), routes `GET` et `POST /api/agent/branch`
+  dans `server/index.ts` (`POST` : `projectId`, `name`, `action` = `switch` | `create` | `delete`),
+  `ChatTab.tsx` (commande + badge).
+
+## Limites connues
+
+- `rollbackToSnapshot` fait encore un `git reset` final : un rollback ↶ désindexe le staging.
+  Même correctif possible (index temporaire), pas fait.
 
 ## Feuille de route
 
 | Ordre | Changement | Branche |
 |---|---|---|
-| 3 | Snapshot qui préserve le staging | `fix/snapshot-keep-index` |
-| 4 | `/branch <nom>` + branche courante dans l’en-tête | `feat/branch-cmd` |
+| 3 ✅ | Snapshot qui préserve le staging | `fix/snapshot-keep-index` |
+| 4 ✅ | `/branch` + branche courante dans l’en-tête | `feat/branch-cmd` |
 | 5 | `/clear` (vider `claudeSessionId`) et `/resume` (sessions de `~/.claude/projects/<chemin-encodé>/*.jsonl`) | `feat/session-cmds` |
 | 6 | `/plan` (`--permission-mode plan`) | `feat/plan-mode` |
 | 7 | Worktrees : deux tâches en parallèle sur un même repo | `feat/worktrees` |
 | — | Annulation par bloc (hunk) dans la fenêtre de diff | à définir |
+| — | Index temporaire aussi dans `rollbackToSnapshot` | à définir |
 
 ## Repères pour développer
 
@@ -96,3 +118,12 @@ chaque message envoyé**. Correctif prévu : prendre le snapshot sur une copie d
 - Lancement du CLI : `server/agent/send-message.ts`.
 - Thème : toujours sombre (`<html class="dark">` dans `index.html`).
 - Vérifier avant de committer : `npx tsc --noEmit -p .` puis `npx vite build`.
+
+## Pièges rencontrés
+
+- macOS peut refuser l’accès à `~/Desktop` au processus `claude` (`Operation not permitted`) même
+  quand le terminal y accède. Remède : `tccutil reset SystemPolicyDesktopFolder`, redémarrer, ou
+  garder les projets hors du Bureau (par exemple `~/Developer`).
+- Une PR se crée sur le fork avec `gh pr create --repo DonDes17/overlord --base main --head <branche>`
+  (sans `--repo`, `gh` vise `poptocrack/overlord`). Fixer une fois : `gh repo set-default DonDes17/overlord`.
+- `gh pr create --fill` échoue sans `origin/main` en local : faire `git fetch origin` avant.
