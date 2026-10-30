@@ -40,6 +40,7 @@ export function TurnDiffModal({
   fromSha,
   toSha,
   onClose,
+  onReverted,
 }: {
   projectId: number;
   /** Conversation the turn belongs to: a branch may work in its own worktree. */
@@ -47,6 +48,8 @@ export function TurnDiffModal({
   fromSha: string;
   toSha?: string;
   onClose: () => void;
+  /** Called after any successful undo (turn, file or block), so the caller can refresh its numbers. */
+  onReverted?: () => void;
 }) {
   const [data, setData] = useState<DiffResponse | null>(null);
   const [layout, setLayout] = useState<Layout>(readLayout);
@@ -102,6 +105,7 @@ export function TurnDiffModal({
       else {
         undoneHunks.current.add(`${path}#${header}`);
         setReload((n) => n + 1);
+        onReverted?.();
       }
     } catch (err) {
       setUndoError(String(err));
@@ -141,7 +145,10 @@ export function TurnDiffModal({
       });
       const d = await r.json();
       if (!d.ok) setUndoError(d.error ?? "Undo failed.");
-      else setReload((n) => n + 1);
+      else {
+        setReload((n) => n + 1);
+        onReverted?.();
+      }
     } catch (err) {
       setUndoError(String(err));
     } finally {

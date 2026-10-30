@@ -7,6 +7,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import { MarkdownContent } from "./MarkdownContent.js";
 import { ToolUseCard } from "./ToolUseCard.js";
 import { TurnDiffModal } from "./TurnDiffModal.js";
+import { TurnFooter } from "./TurnFooter.js";
 import { RichPasteInput, type RichPasteInputHandle, type FileBlock } from "./RichPasteInput.js";
 import type { Project } from "../types.js";
 import { formatModelVersion } from "../lib/models.js";
@@ -614,6 +615,19 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
   const [entries, setEntries] = useState<ChatEntry[]>([]);
   // For each user message, the snapshot taken before the next user message:
   // that pair brackets exactly what one turn changed.
+  // For each turn that has a snapshot, the entry that closes it (the last one before the next user message):
+  // that is where its summary footer goes.
+  const turnFooterAfter = useMemo(() => {
+    const map = new Map<string, ChatEntry>();
+    let owner: ChatEntry | null = null;
+    entries.forEach((e, i) => {
+      if (e.role === "user") owner = e.snapshotSha ? e : null;
+      const next = entries[i + 1];
+      if (owner && (!next || next.role === "user")) map.set(e.id, owner);
+    });
+    return map;
+  }, [entries]);
+
   const nextSnapshotById = useMemo(() => {
     const map = new Map<string, string | undefined>();
     let next: string | undefined;
@@ -917,6 +931,13 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
       scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
     }
   }, [entries, streamingText]);
+
+  // Content that arrives after the fact (turn footers) must not push the end of the chat out of view:
+  // stay at the bottom, unless the user has scrolled up.
+  const keepPinnedToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (el && !userScrolledUp.current) el.scrollTop = el.scrollHeight;
+  }, []);
 
   const loadOlderRef = useRef<() => void>(() => {});
 
@@ -2028,8 +2049,8 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
           </p>
         )}
 
-        {entries.map((entry) =>
-          entry.role === "tool" ? (
+        {entries.map((entry) => {
+          const row = entry.role === "tool" ? (
             <ToolUseCard
               key={entry.id}
               name={entry.toolName ?? entry.content}
@@ -2061,8 +2082,24 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
               projectId={project.id}
               onBranch={onCreateBranch ? () => handleBranch(entry) : undefined}
             />
-          )
-        )}
+          );
+          const owner = turnFooterAfter.get(entry.id);
+          return owner?.snapshotSha ? (
+            <React.Fragment key={entry.id}>
+              {row}
+              <TurnFooter
+                projectId={project.id}
+                channel={channel}
+                fromSha={owner.snapshotSha}
+                toSha={nextSnapshotById.get(owner.id)}
+                settled={agentStatus === "idle"}
+                onGrow={keepPinnedToBottom}
+              />
+            </React.Fragment>
+          ) : (
+            row
+          );
+        })}
 
         {streamingText && (
           <div className="group/msg relative">
