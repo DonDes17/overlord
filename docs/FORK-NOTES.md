@@ -32,7 +32,7 @@ Ce fichier sert de contexte pour Claude Code quand on travaille sur ce repo.
 
 - Le chat lance `claude --print` (headless). Les commandes interactives du CLI (`/clear`, `/compact`,
   `/resume`, `/permissions`, `/rewind`…) apparaissent dans l’autocomplétion mais **ne font rien**.
-- Overlord intercepte ses propres commandes : `/model`, `/stop`, `/cost`, `/branch`, `/clear`, `/resume`, `/help`
+- Overlord intercepte ses propres commandes : `/model`, `/stop`, `/cost`, `/branch`, `/clear`, `/resume`, `/plan`, `/help`
   (`OVERLORD_COMMANDS` et `handleSend` dans `src/components/ChatTab.tsx`).
   Les commandes perso et plugins (`/aidd-*`…) passent au CLI et fonctionnent.
 - Skills et hooks Claude Code s’appliquent dans le chat (un message = un `UserPromptSubmit`).
@@ -109,6 +109,21 @@ relu à chaque fin d’exécution de l’agent, qui peut changer de branche lui-
   fichier), routes `GET /api/agent/claude-sessions`, `POST /api/agent/clear`, `POST /api/agent/resume`
   dans `server/index.ts`, commandes dans `ChatTab.tsx`.
 
+### 6. `/plan` — `feat/plan-mode`
+
+`/plan` bascule le mode plan de la conversation (`/plan on` / `/plan off` pour forcer). Les messages
+suivants lancent le CLI avec `--permission-mode plan` : l'agent lit le projet mais ne modifie rien et
+présente un plan. Badge `PLAN` dans l'en-tête tant que le mode est actif.
+
+- État : `planMode` sur `AgentSession` (en mémoire, **non persisté** : perdu au redémarrage du backend,
+  propre à chaque conversation / sous-conversation). Pas de 409 : il s'applique au message suivant,
+  y compris ceux de la file d'attente.
+- Routes : `GET` et `POST /api/agent/plan` (`projectId`, `channel`, `enabled`).
+- Vérifié avec le vrai CLI : aucun fichier créé, le plan est présenté. Le CLI écrit aussi son plan dans
+  `~/.claude/plans/` (hors du projet).
+- `ExitPlanMode` n'existe pas en headless : pour exécuter le plan, faire `/plan off` puis le demander.
+- Fichiers : `server/agent/send-message.ts` (flag), `types.ts`, `server/index.ts`, `ChatTab.tsx`.
+
 ## Limites connues
 
 - `rollbackToSnapshot` fait encore un `git reset` final : un rollback ↶ désindexe le staging.
@@ -121,7 +136,7 @@ relu à chaque fin d’exécution de l’agent, qui peut changer de branche lui-
 | 3 ✅ | Snapshot qui préserve le staging | `fix/snapshot-keep-index` |
 | 4 ✅ | `/branch` + branche courante dans l’en-tête | `feat/branch-cmd` |
 | 5 ✅ | `/clear` et `/resume` | `feat/session-cmds` |
-| 6 | `/plan` (`--permission-mode plan`) | `feat/plan-mode` |
+| 6 ✅ | `/plan` (`--permission-mode plan`) | `feat/plan-mode` |
 | 7 | Worktrees : deux tâches en parallèle sur un même repo | `feat/worktrees` |
 | — | Annulation par bloc (hunk) dans la fenêtre de diff | à définir |
 | — | Index temporaire aussi dans `rollbackToSnapshot` | à définir |
