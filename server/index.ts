@@ -32,7 +32,7 @@ import { attachWsHandlers } from "./agent/ws-handler.js";
 import { agentSessions, getOrCreateSession, loadSessionFromDb, resolveProjectPath, sessionKey, saveEventsNow } from "./agent/sessions.js";
 import { isValidSessionId, listClaudeSessions, sessionFileExists } from "./agent/claude-sessions.js";
 import { getCommitsSince, rollbackToSnapshot } from "./agent/git-snapshot.js";
-import { isValidSha, revertHunk, revertTurn, turnDiff } from "./agent/git-diff.js";
+import { isValidSha, revertHunk, revertTurn, turnDiff, turnDiffStats } from "./agent/git-diff.js";
 import { createBranch, currentBranch, deleteBranch, listBranches, switchBranch } from "./agent/git-branch.js";
 import type { Channel } from "./agent/types.js";
 
@@ -379,7 +379,7 @@ app.post("/api/agent/rollback", async (c) => {
 // Diff of one agent turn: from the snapshot taken before the message to the
 // next message's snapshot, or to the working directory for the latest turn.
 app.post("/api/agent/diff", async (c) => {
-  const { projectId, fromSha, toSha, channel: rawChannel } = await c.req.json();
+  const { projectId, fromSha, toSha, channel: rawChannel, statsOnly } = await c.req.json();
   const channel = parseChannel(rawChannel);
   if (!projectId || !channel || !isValidSha(fromSha)) return c.json({ ok: false, error: "projectId and a valid fromSha are required" }, 400);
   if (toSha !== undefined && toSha !== null && !isValidSha(toSha)) return c.json({ ok: false, error: "Invalid toSha" }, 400);
@@ -388,7 +388,10 @@ app.post("/api/agent/diff", async (c) => {
   if (!project) return c.json({ ok: false, error: "Project not found" }, 404);
 
   try {
-    return c.json({ ok: true, ...turnDiff(pathFor(project, channel), fromSha, toSha ?? undefined) });
+    const path = pathFor(project, channel);
+    // statsOnly: file list and counts for the turn footer, without the patch.
+    if (statsOnly) return c.json({ ok: true, ...turnDiffStats(path, fromSha, toSha ?? undefined) });
+    return c.json({ ok: true, ...turnDiff(path, fromSha, toSha ?? undefined) });
   } catch (err) {
     return c.json({ ok: false, error: String(err) }, 500);
   }

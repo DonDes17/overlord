@@ -59,11 +59,8 @@ function isLockfile(path: string): boolean {
  * Diff between the snapshot taken before a turn and either the snapshot of the
  * next turn or, for the latest turn, the current working directory.
  */
-export function turnDiff(cwd: string, fromSha: string, toSha?: string): TurnDiff {
-  const toWorkingTree = !toSha;
-  const target = toSha ?? workingTreeSha(cwd);
-
-  const files: DiffFileStat[] = git(cwd, ["diff", "--numstat", "-M", "--no-ext-diff", fromSha, target])
+function fileStats(cwd: string, fromSha: string, target: string): DiffFileStat[] {
+  return git(cwd, ["diff", "--numstat", "-M", "--no-ext-diff", fromSha, target])
     .split("\n")
     .filter(Boolean)
     .map((line) => {
@@ -87,6 +84,18 @@ export function turnDiff(cwd: string, fromSha: string, toSha?: string): TurnDiff
         lockfile: isLockfile(path),
       };
     });
+}
+
+/** Same file list as turnDiff, without computing the patch: cheap enough to show next to every turn. */
+export function turnDiffStats(cwd: string, fromSha: string, toSha?: string): { files: DiffFileStat[]; toWorkingTree: boolean } {
+  const toWorkingTree = !toSha;
+  return { files: fileStats(cwd, fromSha, toSha ?? workingTreeSha(cwd)), toWorkingTree };
+}
+
+export function turnDiff(cwd: string, fromSha: string, toSha?: string): TurnDiff {
+  const toWorkingTree = !toSha;
+  const target = toSha ?? workingTreeSha(cwd);
+  const files = fileStats(cwd, fromSha, target);
 
   const excludes = LOCKFILES.flatMap((name) => [`:(exclude)${name}`, `:(exclude)**/${name}`]);
   let patch = git(cwd, ["diff", "-M", "--no-color", "--no-ext-diff", fromSha, target, "--", ".", ...excludes]);
