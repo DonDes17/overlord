@@ -39,6 +39,8 @@ const OVERLORD_COMMANDS: SlashCmd[] = [
   { name: "stop", description: "Stopper l'agent en cours", scope: "overlord", type: "overlord" },
   { name: "cost", description: "Afficher tokens et coût de la session", scope: "overlord", type: "overlord" },
   { name: "branch", description: "Branches git — /branch <nom> bascule, /branch -c <nom> crée, /branch -d <nom> supprime, /branch liste", scope: "overlord", type: "overlord" },
+  { name: "clear", description: "Repartir d'un contexte vierge (la conversation affichée est conservée)", scope: "overlord", type: "overlord" },
+  { name: "resume", description: "Reprendre une session Claude de ce projet — /resume liste, /resume <n ou id>", scope: "overlord", type: "overlord" },
   { name: "help", description: "Lister les commandes Overlord disponibles", scope: "overlord", type: "overlord" },
 ];
 const OVERLORD_COMMAND_NAMES = new Set(OVERLORD_COMMANDS.map((c) => c.name));
@@ -1361,6 +1363,57 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
             })
             .catch((err) => pushInfo(`Échec : ${String(err)}`));
         }
+      } else if (cmd === "clear") {
+        fetch("/api/agent/clear", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId: project.id, channel }),
+        })
+          .then((r) => r.json())
+          .then((d) =>
+            pushInfo(
+              d.ok
+                ? "Contexte réinitialisé : le prochain message démarre une nouvelle session. La conversation affichée est conservée, mais l'agent ne la voit plus."
+                : `Échec : ${d.error}`
+            )
+          )
+          .catch((err) => pushInfo(`Échec : ${String(err)}`));
+      } else if (cmd === "resume") {
+        fetch(`/api/agent/claude-sessions?projectId=${project.id}&channel=${encodeURIComponent(channel)}`)
+          .then((r) => r.json())
+          .then((d: { ok: boolean; error?: string; current: string | null; sessions: { id: string; updatedAt: number; title: string }[] }) => {
+            if (!d.ok) return pushInfo(`Échec : ${d.error}`);
+            if (!arg) {
+              if (d.sessions.length === 0) return pushInfo("Aucune session Claude trouvée pour ce projet.");
+              return pushInfo(
+                `**Sessions récentes**\n` +
+                  d.sessions
+                    .map(
+                      (x, i) =>
+                        `${i + 1}. ${x.title} — ${new Date(x.updatedAt).toLocaleString()} \`${x.id.slice(0, 8)}\`` +
+                        (x.id === d.current ? " **(actuelle)**" : "")
+                    )
+                    .join("\n") +
+                  `\nUsage : \`/resume <n>\` ou \`/resume <id>\`. Le prochain message continue cette session.`
+              );
+            }
+            const target = /^\d+$/.test(arg) ? d.sessions[Number(arg) - 1] : d.sessions.find((x) => x.id.startsWith(arg.toLowerCase()));
+            if (!target) return pushInfo(`Session « ${arg} » introuvable. Tapez \`/resume\` pour la liste.`);
+            return fetch("/api/agent/resume", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ projectId: project.id, channel, sessionId: target.id }),
+            })
+              .then((r) => r.json())
+              .then((r) =>
+                pushInfo(
+                  r.ok
+                    ? `Session **${target.title}** reprise : le prochain message la continue. Son historique n'est pas affiché ici.`
+                    : `Échec : ${r.error}`
+                )
+              );
+          })
+          .catch((err) => pushInfo(`Échec : ${String(err)}`));
       } else if (cmd === "help") {
         pushInfo(
           `**Commandes Overlord**\n` +

@@ -32,7 +32,7 @@ Ce fichier sert de contexte pour Claude Code quand on travaille sur ce repo.
 
 - Le chat lance `claude --print` (headless). Les commandes interactives du CLI (`/clear`, `/compact`,
   `/resume`, `/permissions`, `/rewind`…) apparaissent dans l’autocomplétion mais **ne font rien**.
-- Overlord intercepte ses propres commandes : `/model`, `/stop`, `/cost`, `/branch`, `/help`
+- Overlord intercepte ses propres commandes : `/model`, `/stop`, `/cost`, `/branch`, `/clear`, `/resume`, `/help`
   (`OVERLORD_COMMANDS` et `handleSend` dans `src/components/ChatTab.tsx`).
   Les commandes perso et plugins (`/aidd-*`…) passent au CLI et fonctionnent.
 - Skills et hooks Claude Code s’appliquent dans le chat (un message = un `UserPromptSubmit`).
@@ -94,6 +94,21 @@ relu à chaque fin d’exécution de l’agent, qui peut changer de branche lui-
   dans `server/index.ts` (`POST` : `projectId`, `name`, `action` = `switch` | `create` | `delete`),
   `ChatTab.tsx` (commande + badge).
 
+### 5. `/clear` et `/resume` — `feat/session-cmds`
+
+- `/clear` : met `claudeSessionId` à `null` et le sauvegarde : le prochain message démarre une session
+  Claude vierge. La conversation affichée est **conservée** à l’écran (rien n’est supprimé en base),
+  mais l’agent ne la voit plus.
+- `/resume` : liste les 10 dernières sessions du projet (`~/.claude/projects/<chemin-encodé>/*.jsonl`,
+  titre généré par le CLI, sinon premier message ; dossier = chemin du projet avec tout caractère
+  non alphanumérique remplacé par `-`). `/resume <n>` ou `/resume <début d’id>` met cet identifiant
+  dans `claudeSessionId` : le prochain message passe `--resume <id>` au CLI.
+- Limite : l’historique de la session reprise **n’est pas affiché** dans le chat, seul l’agent le retrouve.
+- Les deux sont refusés (409) tant que l’agent tourne.
+- Fichiers : `server/agent/claude-sessions.ts` (nouveau, lit seulement les 256 premiers Ko de chaque
+  fichier), routes `GET /api/agent/claude-sessions`, `POST /api/agent/clear`, `POST /api/agent/resume`
+  dans `server/index.ts`, commandes dans `ChatTab.tsx`.
+
 ## Limites connues
 
 - `rollbackToSnapshot` fait encore un `git reset` final : un rollback ↶ désindexe le staging.
@@ -105,7 +120,7 @@ relu à chaque fin d’exécution de l’agent, qui peut changer de branche lui-
 |---|---|---|
 | 3 ✅ | Snapshot qui préserve le staging | `fix/snapshot-keep-index` |
 | 4 ✅ | `/branch` + branche courante dans l’en-tête | `feat/branch-cmd` |
-| 5 | `/clear` (vider `claudeSessionId`) et `/resume` (sessions de `~/.claude/projects/<chemin-encodé>/*.jsonl`) | `feat/session-cmds` |
+| 5 ✅ | `/clear` et `/resume` | `feat/session-cmds` |
 | 6 | `/plan` (`--permission-mode plan`) | `feat/plan-mode` |
 | 7 | Worktrees : deux tâches en parallèle sur un même repo | `feat/worktrees` |
 | — | Annulation par bloc (hunk) dans la fenêtre de diff | à définir |
