@@ -27,11 +27,11 @@ import type { AgentStatusMap } from "../App.js";
 import { Star, EyeOff, Eye, FolderPlus, FolderSearch, Loader2, Check, X, FolderCog, ExternalLink } from "lucide-react";
 
 const AGENT_STATUS_STYLES: Record<string, string> = {
-  none:    "bg-zinc-500/50",
-  idle:    "bg-blue-400 shadow-[0_0_4px_rgba(96,165,250,0.4)]",
-  running: "bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.4)] animate-pulse",
-  done:    "bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.4)]",
-  error:   "bg-red-400 shadow-[0_0_4px_rgba(248,113,113,0.4)]",
+  none:    "bg-muted-foreground/40",
+  idle:    "bg-muted-foreground",
+  running: "bg-warning shadow-[0_0_4px_color-mix(in_oklab,var(--warning)_40%,transparent)] animate-pulse",
+  done:    "bg-success shadow-[0_0_4px_color-mix(in_oklab,var(--success)_40%,transparent)]",
+  error:   "bg-destructive shadow-[0_0_4px_color-mix(in_oklab,var(--destructive)_40%,transparent)]",
 };
 
 type SortKey = "name" | "created" | "updated";

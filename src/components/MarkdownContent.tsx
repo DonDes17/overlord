@@ -27,7 +27,7 @@ function CodeBlock({ children, className: langClass, ...props }: any) {
         title="Copy code"
       >
         {copied ? (
-          <Check className="h-3 w-3 text-green-400" />
+          <Check className="h-3 w-3 text-success" />
         ) : (
           <Copy className="h-3 w-3 text-muted-foreground" />
         )}

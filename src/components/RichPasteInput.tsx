@@ -467,7 +467,7 @@ export const RichPasteInput = forwardRef<RichPasteInputHandle, Props>(function R
             onFileSelect ? "right-10" : "right-2",
             "top-2",
             recording
-              ? "bg-red-500/20 text-red-400 ring-2 ring-red-500/40 animate-pulse"
+              ? "bg-destructive/20 text-destructive ring-2 ring-destructive/40 animate-pulse"
               : "text-muted-foreground hover:bg-secondary-foreground/10 hover:text-foreground",
             "disabled:opacity-50"
           )}
@@ -495,22 +495,22 @@ export const RichPasteInput = forwardRef<RichPasteInputHandle, Props>(function R
           (onFileSelect || speechSupported) && "pr-9",
           onFileSelect && speechSupported && "pr-16",
           dragOver && "ring-2 ring-primary/60 bg-primary/5",
-          recording && "ring-2 ring-red-500/40",
+          recording && "ring-2 ring-destructive/40",
           disabled && "opacity-50 cursor-not-allowed",
           className
         )}
         style={{ minHeight: "100%" }}
       />
       {recording && (
-        <div className="absolute bottom-1 left-3 right-3 flex items-center gap-2 text-[11px] text-red-400 pointer-events-none">
-          <span className="inline-block h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+        <div className="absolute bottom-1 left-3 right-3 flex items-center gap-2 text-[11px] text-destructive pointer-events-none">
+          <span className="inline-block h-2 w-2 rounded-full bg-destructive animate-pulse" />
           <span className="font-mono">
             {interimTranscript ? `"${interimTranscript}"` : "Ecoute... (clique a nouveau pour arreter)"}
           </span>
         </div>
       )}
       {speechError && !recording && (
-        <div className="absolute -bottom-5 left-3 text-[10px] text-red-400">{speechError}</div>
+        <div className="absolute -bottom-5 left-3 text-[10px] text-destructive">{speechError}</div>
       )}
     </div>
   );

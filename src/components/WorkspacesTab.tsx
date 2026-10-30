@@ -10,8 +10,8 @@ interface Props {
 }
 
 const CATEGORY_CONFIG = {
-  app: { label: "Apps", icon: Box, color: "text-blue-400" },
-  package: { label: "Packages", icon: Package, color: "text-amber-400" },
+  app: { label: "Apps", icon: Box, color: "text-primary" },
+  package: { label: "Packages", icon: Package, color: "text-muted-foreground" },
   other: { label: "Other", icon: Layers, color: "text-muted-foreground" },
 };
 

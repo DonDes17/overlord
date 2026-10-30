@@ -278,7 +278,7 @@ function AddToTodoButton({ content, projectId }: { content: string; projectId: n
           className="flex h-6 w-6 items-center justify-center rounded-md opacity-0 group-hover/msg:opacity-100 transition-opacity hover:bg-secondary cursor-pointer"
         >
           {added ? (
-            <Check className="h-3 w-3 text-green-400" />
+            <Check className="h-3 w-3 text-success" />
           ) : (
             <Plus className="h-3 w-3 text-muted-foreground" />
           )}
@@ -461,7 +461,7 @@ const MessageBubble = React.memo(function MessageBubble({ content, projectId, on
               className="flex h-6 w-6 items-center justify-center rounded-md hover:bg-secondary cursor-pointer"
             >
               {copied ? (
-                <Check className="h-3 w-3 text-green-400" />
+                <Check className="h-3 w-3 text-success" />
               ) : (
                 <Copy className="h-3 w-3 text-muted-foreground" />
               )}
@@ -512,8 +512,8 @@ function QueuePanel({
   };
 
   return (
-    <div className="mb-2 overflow-hidden rounded-lg border border-yellow-400/20 bg-yellow-400/5">
-      <div className="flex items-center gap-2 border-b border-yellow-400/10 px-3 py-1.5">
+    <div className="mb-2 overflow-hidden rounded-lg border border-warning/20 bg-warning/5">
+      <div className="flex items-center gap-2 border-b border-warning/10 px-3 py-1.5">
         <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/20 px-1.5 text-[10px] font-bold text-primary">
           {queue.length}
         </span>
@@ -536,7 +536,7 @@ function QueuePanel({
           Vider la file
         </button>
       </div>
-      <div className="max-h-[28vh] divide-y divide-yellow-400/10 overflow-y-auto scrollbar-visible">
+      <div className="max-h-[28vh] divide-y divide-warning/10 overflow-y-auto scrollbar-visible">
         {queue.map((m, i) => (
           <div key={m.id} className="flex items-start gap-2 px-3 py-2">
             <span className="mt-0.5 shrink-0 font-mono text-[10px] text-muted-foreground/60">
@@ -1837,7 +1837,7 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
             claude @ {project.name}
           </span>
           {planMode && (
-            <Badge variant="outline" className="text-[10px] border-sky-400/40 text-sky-400" title="Plan mode: the agent proposes, it does not edit files">
+            <Badge variant="outline" className="text-[10px] border-primary/40 text-primary" title="Plan mode: the agent proposes, it does not edit files">
               PLAN
             </Badge>
           )}
@@ -1853,10 +1853,10 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
           {learningsStatus === "generating" && (
             <Badge
               variant="outline"
-              className="gap-1.5 text-[10px] border-purple-400/40 text-purple-400 animate-pulse"
+              className="gap-1.5 text-[10px] border-warning/40 text-warning animate-pulse"
               title="The agent is analyzing this session to extract learnings"
             >
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-purple-400" />
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-warning" />
               Analyzing session...
             </Badge>
           )}
@@ -1865,8 +1865,8 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
               variant="outline"
               className={cn(
                 "gap-1.5 text-[10px]",
-                codegraphStatus.indexing && "border-amber-400/40 text-amber-400 animate-pulse",
-                !codegraphStatus.indexing && codegraphStatus.indexed && "border-emerald-400/40 text-emerald-400"
+                codegraphStatus.indexing && "border-warning/40 text-warning animate-pulse",
+                !codegraphStatus.indexing && codegraphStatus.indexed && "border-success/40 text-success"
               )}
               title={
                 codegraphStatus.indexing
@@ -1876,8 +1876,8 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
             >
               <span className={cn(
                 "inline-block h-1.5 w-1.5 rounded-full",
-                codegraphStatus.indexing && "bg-amber-400",
-                !codegraphStatus.indexing && codegraphStatus.indexed && "bg-emerald-400"
+                codegraphStatus.indexing && "bg-warning",
+                !codegraphStatus.indexing && codegraphStatus.indexed && "bg-success"
               )} />
               {codegraphStatus.indexing ? "Indexing..." : codegraphStatus.indexed ? "Indexed" : "Not indexed"}
             </Badge>
@@ -1931,19 +1931,19 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
                   <p><strong>{formatTokens(tokenStats.inputTokens)} in</strong>: tokens sent to Claude (your message + project context)</p>
                   <p><strong>{formatTokens(tokenStats.outputTokens)} out</strong>: tokens generated by Claude (its response)</p>
                   {tokenStats.cacheReadTokens > 0 && (
-                    <p><strong className="text-green-400">{formatTokens(tokenStats.cacheReadTokens)} cache</strong>: tokens read from cache instead of being reprocessed (cost savings)</p>
+                    <p><strong className="text-success">{formatTokens(tokenStats.cacheReadTokens)} cache</strong>: tokens read from cache instead of being reprocessed (cost savings)</p>
                   )}
                   <p><strong className="text-primary">${tokenStats.totalCost.toFixed(4)}</strong>: cumulative API cost for this session ({tokenStats.turns} exchange{tokenStats.turns > 1 ? "s" : ""})</p>
                   {rtkSavings && rtkSavings.total_saved > 0 && rtkSavings.avg_savings_pct < 100 && (
-                    <p><strong className="text-emerald-400">RTK -{Math.round(rtkSavings.avg_savings_pct)}%</strong>: tokens saved by RTK across {rtkSavings.total_commands} shell commands (compresses git status, ls, etc.)</p>
+                    <p><strong className="text-success">RTK -{Math.round(rtkSavings.avg_savings_pct)}%</strong>: tokens saved by RTK across {rtkSavings.total_commands} shell commands (compresses git status, ls, etc.)</p>
                   )}
                   {codegraphStatus.indexed && (
                     <div className="border-t border-border/50 pt-1.5 mt-1.5">
-                      <p><strong className="text-cyan-400">Codegraph</strong>: {codegraphStats.totalCalls} call{codegraphStats.totalCalls > 1 ? "s" : ""}</p>
+                      <p><strong className="text-primary">Codegraph</strong>: {codegraphStats.totalCalls} call{codegraphStats.totalCalls > 1 ? "s" : ""}</p>
                       {codegraphStats.totalCalls > 0 ? (
                         <>
                           <p className="text-muted-foreground">Consumed: <strong>{formatTokens(codegraphStats.totalConsumed)}</strong> tokens (results read by Claude)</p>
-                          <p className="text-muted-foreground">Estimated savings: <strong className="text-cyan-400">~{formatTokens(codegraphStats.totalSaved)}</strong> tokens vs equivalent Read/Grep calls</p>
+                          <p className="text-muted-foreground">Estimated savings: <strong className="text-primary">~{formatTokens(codegraphStats.totalSaved)}</strong> tokens vs equivalent Read/Grep calls</p>
                           <p className="text-[10px] italic opacity-60 mt-1">Rough heuristic (8k/context, 5k/callers, 3k/search, 0.5k/files). Saved/consumed ratio = {codegraphStats.totalConsumed > 0 ? (codegraphStats.totalSaved / codegraphStats.totalConsumed).toFixed(1) : "-"}x.</p>
                           <div className="mt-1 space-y-0.5">
                             {Object.entries(codegraphStats.perTool).map(([tool, s]) => (
@@ -1962,7 +1962,7 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
                   )}
                   {latencyStats && (
                     <div className="border-t border-border/50 pt-1.5 mt-1.5">
-                      <p><strong className="text-amber-400">Latence (dernier turn)</strong></p>
+                      <p><strong className="text-warning">Latence (dernier turn)</strong></p>
                       <table className="text-[10px] font-mono mt-1 w-full">
                         <tbody>
                           <tr><td className="text-muted-foreground pr-2">TTFE (1er event)</td><td>{formatMs(latencyStats.lastTTFE)}</td></tr>
@@ -1975,7 +1975,7 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
                       </table>
                       {latencyStats.sampleSize > 1 && (
                         <>
-                          <p className="mt-1.5"><strong className="text-amber-400/70">Moyenne (derniers {latencyStats.sampleSize})</strong></p>
+                          <p className="mt-1.5"><strong className="text-warning/70">Moyenne (derniers {latencyStats.sampleSize})</strong></p>
                           <table className="text-[10px] font-mono mt-1 w-full">
                             <tbody>
                               <tr><td className="text-muted-foreground pr-2">TTFE</td><td>{formatMs(latencyStats.avgTTFE)}</td></tr>
@@ -1999,7 +1999,7 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
           <span
             className={cn(
               "text-xs",
-              connected ? "text-green-400" : "text-red-400"
+              connected ? "text-success" : "text-destructive"
             )}
           >
             {connected ? "connected" : "disconnected"}
@@ -2013,8 +2013,8 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
           className={cn(
             "flex items-center gap-3 overflow-hidden border-b px-5 py-2 text-xs",
             agentStatus === "waiting"
-              ? "border-yellow-400/20 bg-yellow-400/5 text-yellow-400"
-              : "border-green-400/20 bg-green-400/5 text-green-400"
+              ? "border-warning/20 bg-warning/5 text-warning"
+              : "border-success/20 bg-success/5 text-success"
           )}
         >
           {agentStatus === "waiting"
@@ -2197,10 +2197,7 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
                       <span
                         className={cn(
                           "shrink-0 rounded px-1 py-px text-[9px] font-medium uppercase tracking-wide",
-                          cmd.scope === "project" && "bg-emerald-400/15 text-emerald-400",
-                          cmd.scope === "global" && "bg-sky-400/15 text-sky-400",
-                          cmd.scope === "plugin" && "bg-purple-400/15 text-purple-400",
-                          cmd.scope === "overlord" && "bg-primary/20 text-primary"
+                          cmd.scope === "overlord" ? "bg-primary/20 text-primary" : "bg-secondary text-muted-foreground"
                         )}
                       >
                         {cmd.scope}
@@ -2224,10 +2221,10 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
             {toolRequests.map((req) => (
               <div
                 key={req.id}
-                className="flex items-start justify-between gap-3 rounded-md border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-xs"
+                className="flex items-start justify-between gap-3 rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs"
               >
                 <div className="flex min-w-0 flex-col gap-0.5">
-                  <span className="text-amber-400 font-medium">
+                  <span className="text-warning font-medium">
                     L'agent demande l'accès à{" "}
                     <code className="font-mono text-foreground">{req.tool}</code>
                   </span>
@@ -2242,7 +2239,7 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 border-amber-400/40 text-amber-400 hover:bg-amber-400/10"
+                    className="h-7 border-warning/40 text-warning hover:bg-warning/10"
                     onClick={() => resolveToolRequest(req.id, "approve")}
                   >
                     Approuver
@@ -2360,7 +2357,7 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
             disabled={!connected}
             className={cn(
               "pb-12 pr-16",
-              isWorking ? "border-yellow-400/30" : "border-border"
+              isWorking ? "border-warning/30" : "border-border"
             )}
           />
           <div className="absolute bottom-2 right-2 z-20 flex items-center gap-1.5">

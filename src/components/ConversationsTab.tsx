@@ -44,7 +44,7 @@ export function ConversationsTab({ project, conversations, onOpen, onDelete, not
       </div>
 
       {notice && (
-        <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs text-amber-300">
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
           <span className="min-w-0 flex-1 break-words">{notice}</span>
           <button onClick={onDismissNotice} className="shrink-0 hover:text-foreground" aria-label="Dismiss">✕</button>
         </div>
@@ -72,7 +72,7 @@ export function ConversationsTab({ project, conversations, onOpen, onDelete, not
               {/* Status dot */}
               <span className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center">
                 {conv.running ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-green-400" />
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-success" />
                 ) : conv.unread ? (
                   <span className="h-2 w-2 rounded-full bg-primary" title="New reply" />
                 ) : (
@@ -86,13 +86,13 @@ export function ConversationsTab({ project, conversations, onOpen, onDelete, not
                     {conv.title || "Branch"}
                   </span>
                   {conv.running && (
-                    <span className="shrink-0 rounded bg-green-400/15 px-1.5 py-0.5 text-[10px] font-medium text-green-400">
+                    <span className="shrink-0 rounded bg-success/15 px-1.5 py-0.5 text-[10px] font-medium text-success">
                       running
                     </span>
                   )}
                   {conv.worktreeBranch && (
                     <span
-                      className="shrink-0 truncate rounded border border-sky-400/40 px-1.5 py-0.5 font-mono text-[10px] text-sky-400"
+                      className="shrink-0 truncate rounded border border-primary/40 px-1.5 py-0.5 font-mono text-[10px] text-primary"
                       title={
                         conv.worktree
                           ? `${conv.worktree.changed} modified file(s), ${conv.worktree.ahead} unmerged commit(s)\n${conv.worktreePath ?? ""}`
@@ -101,7 +101,7 @@ export function ConversationsTab({ project, conversations, onOpen, onDelete, not
                     >
                       ⎇ {conv.worktreeBranch}
                       {conv.worktree && (conv.worktree.changed > 0 || conv.worktree.ahead > 0) && (
-                        <span className="ml-1 text-amber-400">● {conv.worktree.changed > 0 ? `${conv.worktree.changed}~` : ""}{conv.worktree.ahead > 0 ? `${conv.worktree.ahead}↑` : ""}</span>
+                        <span className="ml-1 text-warning">● {conv.worktree.changed > 0 ? `${conv.worktree.changed}~` : ""}{conv.worktree.ahead > 0 ? `${conv.worktree.ahead}↑` : ""}</span>
                       )}
                     </span>
                   )}

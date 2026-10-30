@@ -167,7 +167,7 @@ export function SettingsTab({ project, onProjectUpdate }: Props) {
                     <div className="text-xs font-semibold">
                       Effective prompt sent to Claude
                       {effectivePrompt.nudges.length > 0 && (
-                        <span className="ml-2 text-[10px] text-emerald-400 font-normal">
+                        <span className="ml-2 text-[10px] text-success font-normal">
                           + {effectivePrompt.nudges.length} auto-nudge{effectivePrompt.nudges.length > 1 ? "s" : ""}
                         </span>
                       )}
@@ -179,8 +179,8 @@ export function SettingsTab({ project, onProjectUpdate }: Props) {
                   {effectivePrompt.nudges.length > 0 && (
                     <div className="space-y-1">
                       {effectivePrompt.nudges.map((n) => (
-                        <div key={n.name} className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2 py-1.5 text-[11px]">
-                          <span className="font-semibold text-emerald-400">{n.name}</span>
+                        <div key={n.name} className="rounded-md border border-success/30 bg-success/5 px-2 py-1.5 text-[11px]">
+                          <span className="font-semibold text-success">{n.name}</span>
                           <span className="ml-2 text-muted-foreground">{n.reason}</span>
                         </div>
                       ))}
@@ -531,7 +531,7 @@ function IndexingCard({ project }: { project: Project }) {
         <div className="flex items-center gap-2 rounded-md border border-border bg-secondary/40 px-3 py-2 text-xs">
           <span
             className={`h-2 w-2 rounded-full ${
-              status.indexing ? "bg-amber-400" : status.indexed ? "bg-emerald-400" : "bg-muted-foreground/50"
+              status.indexing ? "bg-warning" : status.indexed ? "bg-success" : "bg-muted-foreground/50"
             }`}
           />
           <span className="font-medium">

@@ -203,10 +203,10 @@ function LearningsSection({ project }: { project: Project }) {
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="text-sm flex items-center gap-2">
-            <BookOpen className="h-4 w-4 text-purple-400" />
+            <BookOpen className="h-4 w-4 text-muted-foreground" />
             Session learnings
             {unreviewedCount > 0 && (
-              <Badge variant="outline" className="text-[10px] border-purple-400/40 text-purple-400">
+              <Badge variant="outline" className="text-[10px] border-border text-muted-foreground">
                 {unreviewedCount} new
               </Badge>
             )}
@@ -280,12 +280,12 @@ function LearningCard({
           })}
         </span>
         {!learning.reviewed && (
-          <Badge variant="outline" className="text-[9px] border-purple-400/40 text-purple-400">
+          <Badge variant="outline" className="text-[9px] border-border text-muted-foreground">
             new
           </Badge>
         )}
         {learning.exported && (
-          <Badge variant="outline" className="text-[9px] border-green-400/40 text-green-400">
+          <Badge variant="outline" className="text-[9px] border-success/40 text-success">
             <Sparkles className="h-2.5 w-2.5 mr-0.5" />
             exported
           </Badge>

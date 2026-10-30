@@ -296,9 +296,20 @@ besoin de l'agent (`POST /api/conversations/:id/merge`, réponse avec `step`).
   inactif. Un tour sans modification n'affiche rien. Un undo fait dans la fenêtre de diff rafraîchit le
   pied de tour (`onReverted`). Le chat reste collé en bas quand un pied de tour apparaît, sauf si on a
   remonté la conversation. Libellés en anglais comme le reste de la fonction diff.
-- **À faire** : migrer les ~100 couleurs Tailwind écrites en dur (`green`, `emerald`, `amber`, `yellow`,
-  `sky`, `cyan`, `blue`, `purple`, `violet`) vers `success`, `warning`, `destructive` et l'accent ; alléger
-  l'en-tête (métriques) et le bandeau CodeGraph ; pied de tour avec lien vers le diff.
+- **Couleurs sémantiques** (`refactor/semantic-colors`) : plus aucune couleur Tailwind écrite en dur dans
+  les composants (hors exceptions ci-dessous). Règle, par sens et pas par teinte :
+  `success` (green, emerald) = ça marche ; `warning` (amber, yellow, orange) = attention ou en cours ;
+  `destructive` (red) = erreur ou suppression ; `primary` (sky, blue, cyan) = information ou élément actif.
+  Une **simple catégorie** (type d'outil, portée d'une commande `/`, type de workspace, étiquettes du résumé)
+  n'a pas de teinte : l'icône et le libellé suffisent. Dans `ToolUseCard`, les outils qui **modifient**
+  (Edit, Write, Command) sont plus clairs que ceux en lecture seule (Read, Search, Web), par la luminosité.
+  Les points d'état de la barre latérale suivent : neutre, `warning` (en cours), `success`, `destructive`.
+  **Pour une nouvelle couleur** : choisir un rôle (`text-success`, `bg-warning/20`, `border-destructive`…),
+  jamais `text-green-400` ; ajouter une teinte n'a de sens que pour un graphique.
+  **Exceptions voulues** : le dégradé du logo (`Sidebar.tsx`) et l'onglet Insights (graphiques et carte de
+  chaleur, qui ont besoin de teintes distinctes pour séparer leurs séries).
+- **À faire** : les puces « sélectionné » des Réglages (outils autorisés) sont des aplats d'accent très
+  chargés ; alléger (fond translucide + bordure) ; regroupement des commandes consécutives du chat.
 - **Méthode de vérification** : base temporaire (`HOME` factice) avec un projet et une conversation de
   démonstration, serveur sur un autre port (`PORT=4799`, `dist/client` construit), puis Electron caché
   (`BrowserWindow` avec `offscreen: true`, `capturePage()`) qui clique le projet et enregistre un PNG.

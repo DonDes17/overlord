@@ -244,7 +244,7 @@ function AssetCard({ asset, onDelete }: { asset: MarketingAsset; onDelete: (id: 
           className="flex h-7 w-7 items-center justify-center rounded-md bg-secondary hover:bg-primary"
           title="Copy URL"
         >
-          {copied ? <Check className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
+          {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
         </button>
         <button
           onClick={() => onDelete(asset.id)}
