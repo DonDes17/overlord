@@ -137,7 +137,6 @@ export const RichPasteInput = forwardRef<RichPasteInputHandle, Props>(function R
     if (!el) return;
     if (value === lastValueRef.current) return; // avoid re-render during typing
 
-    // Preserve cursor position as offset from start when rerendering external changes
     el.innerHTML = "";
     const tokens = valueToTokens(value, blocksRef.current, fileBlocksRef.current);
     for (const token of tokens) {
@@ -167,6 +166,17 @@ export const RichPasteInput = forwardRef<RichPasteInputHandle, Props>(function R
       }
     }
     lastValueRef.current = value;
+
+    // Rebuilding the DOM drops the selection (the caret jumps to the start). Put it
+    // back at the end, but only if the user is in the editor: never steal focus.
+    if (document.activeElement === el) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
   }, [value, fileBlocks]);
 
   const handleInput = useCallback(() => {
