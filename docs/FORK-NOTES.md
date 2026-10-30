@@ -308,8 +308,22 @@ besoin de l'agent (`POST /api/conversations/:id/merge`, réponse avec `step`).
   jamais `text-green-400` ; ajouter une teinte n'a de sens que pour un graphique.
   **Exceptions voulues** : le dégradé du logo (`Sidebar.tsx`) et l'onglet Insights (graphiques et carte de
   chaleur, qui ont besoin de teintes distinctes pour séparer leurs séries).
+- **Appels d'outils regroupés** (`feat/tool-groups`, `src/components/ToolGroup.tsx`) : une suite d'au
+  moins deux appels d'outils entre deux messages devient une seule ligne repliée, `N tool calls` avec le
+  détail (`Read ×2, Search, Edit ×2, Command`) et jusqu'à trois icônes ; un clic déplie la liste des cartes
+  habituelles. Tant que l'agent travaille et que le groupe est la dernière chose du chat, la ligne montre un
+  spinner et **ce qu'il fait maintenant** (la commande ou le fichier du dernier appel). Un appel isolé reste
+  une carte. **`AskUserQuestion` n'est jamais regroupé** : c'est un formulaire à remplir, il coupe le groupe.
+  Le regroupement est calculé dans `ChatTab.tsx` (`rows`) ; le pied de tour se place après le dernier élément
+  du tour, groupe compris. La bulle d'attente (« … 5s ») n'a plus ni carte ni étiquette `CLAUDE`.
 - **À faire** : les puces « sélectionné » des Réglages (outils autorisés) sont des aplats d'accent très
-  chargés ; alléger (fond translucide + bordure) ; regroupement des commandes consécutives du chat.
+  chargés ; alléger (fond translucide + bordure).
+- **Tester le direct sans dépenser de tokens** : le serveur accepte `CLAUDE_PATH`, donc un faux `claude`
+  (script Node) peut jouer un tour. Pour que le chat réagisse comme avec le vrai, il faut émettre **les
+  deux** : des `stream_event` (`content_block_start`, `content_block_delta` avec `input_json_delta`,
+  `content_block_stop`), dont le chat en direct tire les appels d'outils, **et** les messages `assistant`
+  complets, dont l'historique est reconstruit au rechargement. Sans les seconds, les outils disparaissent
+  après un rechargement (ce n'est pas un bug de l'app).
 - **Méthode de vérification** : base temporaire (`HOME` factice) avec un projet et une conversation de
   démonstration, serveur sur un autre port (`PORT=4799`, `dist/client` construit), puis Electron caché
   (`BrowserWindow` avec `offscreen: true`, `capturePage()`) qui clique le projet et enregistre un PNG.
