@@ -29,7 +29,8 @@ import toolRequestsRoutes from "./routes/tool-requests.js";
 
 import { setWebSocketServer } from "./ws.js";
 import { attachWsHandlers } from "./agent/ws-handler.js";
-import { agentSessions, sessionKey, saveEventsNow } from "./agent/sessions.js";
+import { agentSessions, getOrCreateSession, loadSessionFromDb, sessionKey, saveEventsNow } from "./agent/sessions.js";
+import { isValidSessionId, listClaudeSessions, sessionFileExists } from "./agent/claude-sessions.js";
 import { getCommitsSince, rollbackToSnapshot } from "./agent/git-snapshot.js";
 import { isValidSha, revertTurn, turnDiff } from "./agent/git-diff.js";
 import { createBranch, currentBranch, deleteBranch, listBranches, switchBranch } from "./agent/git-branch.js";
@@ -423,6 +424,56 @@ app.post("/api/agent/branch", async (c) => {
   const run = action === "create" ? createBranch : action === "delete" ? deleteBranch : switchBranch;
   const result = run(project.path, name.trim());
   return c.json({ ...result, ...currentBranch(project.path) }, result.ok ? 200 : 400);
+});
+
+function parseChannel(raw: unknown): Channel | null {
+  if (raw === undefined || raw === null || raw === "chat") return "chat";
+  if (typeof raw === "string" && (raw === "marketing" || /^sub:\d+$/.test(raw))) return raw as Channel;
+  return null;
+}
+
+// Claude sessions of this project, most recent first (/resume).
+app.get("/api/agent/claude-sessions", (c) => {
+  const projectId = Number(c.req.query("projectId"));
+  const channel = parseChannel(c.req.query("channel"));
+  const project = db.select().from(projects).where(eq(projects.id, projectId)).get();
+  if (!project || !channel) return c.json({ ok: false, error: "Project not found" }, 404);
+
+  const current = agentSessions.get(sessionKey(projectId, channel))?.claudeSessionId ?? null;
+  return c.json({ ok: true, current, sessions: listClaudeSessions(project.path, 10) });
+});
+
+// /clear: the next message starts a fresh Claude session. The conversation stays on screen.
+app.post("/api/agent/clear", async (c) => {
+  const { projectId, channel: rawChannel } = await c.req.json();
+  const channel = parseChannel(rawChannel);
+  const project = db.select().from(projects).where(eq(projects.id, Number(projectId))).get();
+  if (!project || !channel) return c.json({ ok: false, error: "Project not found" }, 404);
+  if (isAgentRunning(project.id)) return c.json({ ok: false, error: "The agent is running. Stop it first." }, 409);
+
+  const session = agentSessions.get(sessionKey(project.id, channel)) ?? loadSessionFromDb(project.id, project.path, channel);
+  if (session) {
+    session.claudeSessionId = null;
+    saveEventsNow(session);
+  }
+  return c.json({ ok: true });
+});
+
+// /resume <id>: the next message continues that Claude session.
+app.post("/api/agent/resume", async (c) => {
+  const { projectId, channel: rawChannel, sessionId } = await c.req.json();
+  const channel = parseChannel(rawChannel);
+  const project = db.select().from(projects).where(eq(projects.id, Number(projectId))).get();
+  if (!project || !channel) return c.json({ ok: false, error: "Project not found" }, 404);
+  if (!isValidSessionId(sessionId) || !sessionFileExists(project.path, sessionId)) {
+    return c.json({ ok: false, error: "Unknown session for this project." }, 404);
+  }
+  if (isAgentRunning(project.id)) return c.json({ ok: false, error: "The agent is running. Stop it first." }, 409);
+
+  const session = getOrCreateSession(project.id, project.path, channel);
+  session.claudeSessionId = sessionId;
+  saveEventsNow(session);
+  return c.json({ ok: true });
 });
 
 // Undo the changes of a turn (or of some of its files) on the working tree.
