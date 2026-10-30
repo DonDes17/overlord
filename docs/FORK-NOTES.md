@@ -32,7 +32,7 @@ Ce fichier sert de contexte pour Claude Code quand on travaille sur ce repo.
 
 - Le chat lance `claude --print` (headless). Les commandes interactives du CLI (`/clear`, `/compact`,
   `/resume`, `/permissions`, `/rewind`…) apparaissent dans l’autocomplétion mais **ne font rien**.
-- Overlord intercepte ses propres commandes : `/model`, `/stop`, `/cost`, `/branch`, `/clear`, `/resume`, `/plan`, `/help`
+- Overlord intercepte ses propres commandes : `/model`, `/stop`, `/cost`, `/branch`, `/clear`, `/resume`, `/plan`, `/worktree`, `/help`
   (`OVERLORD_COMMANDS` et `handleSend` dans `src/components/ChatTab.tsx`).
   Les commandes perso et plugins (`/aidd-*`…) passent au CLI et fonctionnent.
 - Skills et hooks Claude Code s’appliquent dans le chat (un message = un `UserPromptSubmit`).
@@ -124,7 +124,43 @@ présente un plan. Badge `PLAN` dans l'en-tête tant que le mode est actif.
 - `ExitPlanMode` n'existe pas en headless : pour exécuter le plan, faire `/plan off` puis le demander.
 - Fichiers : `server/agent/send-message.ts` (flag), `types.ts`, `server/index.ts`, `ChatTab.tsx`.
 
+### 7. Worktrees — `feat/worktrees`
+
+Une branche (sous-conversation) peut tourner dans son **propre git worktree** : dossier et branche git
+dédiés, donc deux agents en parallèle sur un même dépôt ne se marchent plus dessus (fichiers, snapshots,
+diffs, undo).
+
+- **Création** : en cliquant sur l'icône ⎇ d'un message, une boîte propose « Isoler dans un worktree »
+  (choix mémorisé) et le nom. Dossier : `~/.overlord/worktrees/<projet>-<id>/<nom>-<id>`, branche
+  `overlord/<nom>-<id>`, créée depuis le HEAD du projet. Hors de tout dépôt, pour ne pas polluer le
+  `git add -A` des snapshots.
+- **Préparation** : lien symbolique `node_modules` ; copie des `.env*` de la racine **seulement s'ils
+  sont ignorés par git** (sinon ils apparaîtraient comme modifiés). `/node_modules` est ajouté à
+  `.git/info/exclude` (local, partagé par les worktrees) : un lien symbolique n'est pas couvert par un
+  motif `node_modules/` et irait sinon dans les snapshots.
+- **Chemin** : `session.projectPath` pointe vers le worktree (`loadSessionFromDb`, `resolveProjectPath`
+  dans `server/agent/sessions.ts`). Le serveur le décide depuis la base, jamais le client. Un worktree
+  supprimé à la main n'est **pas** remplacé par le dossier du projet : l'envoi échoue avec un message.
+- **Routes** `diff`, `revert`, `branch`, `claude-sessions`, `resume`, `clear` acceptent `channel`.
+  `isAgentRunning` est **par dossier** : un agent dans un worktree ne bloque pas le dépôt principal.
+- **`/worktree`** (dans une branche) : chemin, branche, état. `/worktree -d` supprime le worktree en
+  gardant la conversation, qui travaille alors dans le dossier du projet avec une session Claude
+  vierge ; `-d --force` supprime même avec du travail non sauvegardé.
+- **Suppression** d'une branche ou d'un projet : le worktree n'est retiré que s'il est propre et sans
+  commit non fusionné ; sinon il reste sur disque, avec son chemin affiché (bandeau dans l'onglet
+  Conversations). L'onglet affiche `⎇ overlord/…` avec `n~` fichiers modifiés et `n↑` commits en avance.
+- **Récupérer le travail** : fusionner `overlord/<nom>` soi-même depuis le dépôt principal (`git merge`
+  ou PR), puis `/worktree -d`.
+- Fichiers : `server/agent/git-worktree.ts` (nouveau), colonnes `worktree_path` / `worktree_branch`
+  (`conversations`), `server/routes/conversations.ts`, `server/index.ts` (`pathFor`),
+  `src/components/NewBranchDialog.tsx` (nouveau), `ConversationsTab.tsx`, `SubConversationModal.tsx`.
+
 ## Limites connues
+
+- Worktrees : pas de CodeGraph (l'index est par chemin) ; `node_modules` partagé (deux branches qui
+  changent des dépendances se gênent) ; pas d'interface de fusion ; création uniquement au moment où la
+  branche est créée (pas d'ajout a posteriori) ; une branche git ne peut être extraite qu'à un seul
+  endroit (`/branch <nom>` sur une branche déjà utilisée ailleurs renvoie l'erreur de git).
 
 - `rollbackToSnapshot` fait encore un `git reset` final : un rollback ↶ désindexe le staging.
   Même correctif possible (index temporaire), pas fait.
@@ -137,7 +173,7 @@ présente un plan. Badge `PLAN` dans l'en-tête tant que le mode est actif.
 | 4 ✅ | `/branch` + branche courante dans l’en-tête | `feat/branch-cmd` |
 | 5 ✅ | `/clear` et `/resume` | `feat/session-cmds` |
 | 6 ✅ | `/plan` (`--permission-mode plan`) | `feat/plan-mode` |
-| 7 | Worktrees : deux tâches en parallèle sur un même repo | `feat/worktrees` |
+| 7 ✅ | Worktrees : deux tâches en parallèle sur un même repo | `feat/worktrees` |
 | — | Annulation par bloc (hunk) dans la fenêtre de diff | à définir |
 | — | Index temporaire aussi dans `rollbackToSnapshot` | à définir |
 
