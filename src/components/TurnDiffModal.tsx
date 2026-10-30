@@ -219,7 +219,7 @@ export function TurnDiffModal({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex bg-black/60 p-4" onMouseDown={onClose}>
+    <div className="desktop-titlebar-no-drag fixed inset-0 z-50 flex bg-black/60 p-4" onMouseDown={onClose}>
       <div
         className="mx-auto flex h-full w-full max-w-[1600px] flex-col overflow-hidden rounded-lg border border-border bg-background shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}
@@ -240,7 +240,7 @@ export function TurnDiffModal({
                 onClick={() => undo("turn")}
                 disabled={undoing}
                 className={cn(
-                  "mr-2 flex h-7 items-center gap-1 rounded px-2 text-xs hover:bg-secondary disabled:opacity-50",
+                  "mr-2 flex h-8 items-center gap-1.5 rounded px-3 text-xs hover:bg-secondary disabled:opacity-50",
                   confirm === "turn" && "bg-destructive text-destructive-foreground hover:bg-destructive"
                 )}
                 title="Revert every file of this turn"
@@ -250,19 +250,19 @@ export function TurnDiffModal({
             )}
             <button
               onClick={() => setLayout("side-by-side")}
-              className={cn("flex h-7 items-center gap-1 rounded px-2 text-xs hover:bg-secondary", layout === "side-by-side" && "bg-secondary")}
+              className={cn("flex h-8 items-center gap-1.5 rounded px-3 text-xs hover:bg-secondary", layout === "side-by-side" && "bg-secondary")}
               title="Side by side"
             >
               <Columns2 className="h-3.5 w-3.5" /> Split
             </button>
             <button
               onClick={() => setLayout("line-by-line")}
-              className={cn("flex h-7 items-center gap-1 rounded px-2 text-xs hover:bg-secondary", layout === "line-by-line" && "bg-secondary")}
+              className={cn("flex h-8 items-center gap-1.5 rounded px-3 text-xs hover:bg-secondary", layout === "line-by-line" && "bg-secondary")}
               title="Unified"
             >
               <Rows2 className="h-3.5 w-3.5" /> Unified
             </button>
-            <button onClick={onClose} className="ml-2 flex h-7 w-7 items-center justify-center rounded hover:bg-secondary" title="Close (Esc)">
+            <button onClick={onClose} className="ml-2 flex h-8 w-8 items-center justify-center rounded hover:bg-secondary" title="Close (Esc)">
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -293,7 +293,7 @@ export function TurnDiffModal({
                 <div key={f.path} className="group flex items-center hover:bg-secondary">
                 <button
                   onClick={() => !f.lockfile && !f.binary && scrollToFile(f.path)}
-                  className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1 text-left"
+                  className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left"
                   title={f.path}
                 >
                   <span className="min-w-0 flex-1 truncate font-mono">
@@ -312,7 +312,7 @@ export function TurnDiffModal({
                   onClick={() => undo(f.path, f.oldPath ? [f.oldPath, f.path] : [f.path])}
                   disabled={undoing}
                   className={cn(
-                    "mr-2 shrink-0 rounded px-1.5 py-0.5 text-[11px] opacity-0 hover:bg-background group-hover:opacity-100 disabled:opacity-50",
+                    "flex min-w-9 shrink-0 self-stretch items-center justify-center px-2 text-[11px] opacity-0 hover:bg-background focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-50",
                     confirm === f.path && "bg-destructive text-destructive-foreground opacity-100 hover:bg-destructive"
                   )}
                   title="Revert this file"

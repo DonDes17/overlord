@@ -235,6 +235,27 @@ html, body, #root {
 }
 
 @layer base {
+  /* Minimum click target for every button. A small button gets an invisible area around it that
+     brings it up to --hit-target (no effect on layout or looks; a bigger button is unchanged:
+     max(100%, ...)). Buttons that already style their own ::after (tabs, checkbox, sidebar) are left
+     alone, and `data-no-hit-area` opts a button out (e.g. when it sits right next to another one).
+     In @layer base on purpose: utilities such as `absolute` or `fixed` still win on `position`. */
+  :root {
+    --hit-target: 32px;
+  }
+  :is(button, [role="button"]):not([class*="after:"]):not([data-no-hit-area]) {
+    position: relative;
+  }
+  :is(button, [role="button"]):not([class*="after:"]):not([data-no-hit-area])::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, var(--hit-target));
+    height: max(100%, var(--hit-target));
+    transform: translate(-50%, -50%);
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
@@ -264,7 +285,14 @@ html, body, #root {
 .desktop-titlebar-drag textarea,
 .desktop-titlebar-drag select,
 .desktop-titlebar-drag [role="button"],
-.desktop-titlebar-no-drag {
+.desktop-titlebar-no-drag,
+/* The title bar (top 48px of the window) is a drag area for the OS, which swallows clicks on anything
+   under it, even a modal drawn above. Overlays opt out; full-screen ones also carry the class
+   `desktop-titlebar-no-drag` (TurnDiffModal, SkillsTab, WorkspaceOnboarding). */
+[data-slot="dialog-overlay"],
+[data-slot="dialog-content"],
+[data-slot="sheet-overlay"],
+[data-slot="sheet-content"] {
   -webkit-app-region: no-drag;
 }
 
@@ -299,13 +327,14 @@ html, body, #root {
 /* "Undo block" button injected in each hunk header of the turn diff (TurnDiffModal). */
 .overlord-diff .hunk-undo {
   margin-left: 0.75rem;
-  padding: 0 0.4rem;
+  min-height: 24px;
+  padding: 2px 0.75rem;
   border: 1px solid currentColor;
   border-radius: 4px;
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   opacity: 0.55;
   cursor: pointer;
 }

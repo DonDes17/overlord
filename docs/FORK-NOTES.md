@@ -226,6 +226,31 @@ besoin de l'agent (`POST /api/conversations/:id/merge`, réponse avec `step`).
   une autre branche, push vers un dépôt nu et PR avec un faux `gh`. **La création réelle d'une PR n'a pas
   été testée** (à essayer une fois sur un dépôt GitHub jetable).
 
+### 10. Zones de clic — `fix/click-targets`
+
+- **Tous les boutons** (`button` et `[role="button"]`) ont une zone de clic d'au moins `--hit-target` (32 px,
+  dans `src/index.css`). Un petit bouton reçoit autour de lui une zone invisible (`::after` centré, de
+  taille `max(100%, 32px)`), sans effet sur la mise en page ni sur l'apparence ; un grand bouton est
+  inchangé. Pour grossir ou réduire : changer la variable.
+- La règle est dans `@layer base` : les utilitaires Tailwind (`absolute`, `fixed`…) gardent la main sur
+  `position`. Sont **exclus** les boutons qui stylent déjà leur `::after` (classe contenant `after:` :
+  onglets, checkbox, barre latérale) et ceux marqués `data-no-hit-area` (à utiliser pour deux boutons
+  collés dont les zones se gêneraient).
+- Limite : une zone invisible est rognée par un parent en `overflow: hidden`, et deux petits boutons à moins
+  de 4 px l'un de l'autre se partagent la bande entre eux (le dernier dans le DOM gagne).
+- **Fenêtre de diff** : agrandie pour de vrai (lignes serrées) : boutons d'en-tête `h-8` (Undo turn, Split,
+  Unified, fermer), lignes de fichiers plus hautes, ↶ de fichier aussi haut que la ligne (32 px de large
+  au moins, visible aussi au focus clavier), `↶ Undo block` de 24 px minimum.
+- **Cause d'un bouton qui ne répond que dans sa moitié basse** (cas vécu dans la fenêtre de diff) : la fenêtre
+  Electron est en `titleBarStyle: "hiddenInset"` et le haut de l'app (`desktop-titlebar-drag`, 48 px) est une
+  zone de déplacement de la fenêtre pour l'OS, qui avale les clics, même sous un calque dessiné au-dessus.
+  Un calque plein écran dont l'en-tête touche le haut doit être `-webkit-app-region: no-drag` : classe
+  `desktop-titlebar-no-drag` (utilisée par `TurnDiffModal`, `SkillsTab`, `WorkspaceOnboarding`), et règle
+  globale pour `dialog-*` / `sheet-*` (`src/index.css`). Non vérifiable par script : la zone de déplacement
+  est gérée par l'OS, pas par le rendu (`elementFromPoint` ne la voit pas).
+- Vérifié dans Electron (page de test avec le CSS final, `document.elementFromPoint`) : zone élargie sur
+  un bouton de 20 px, `absolute` conservé, boutons exclus inchangés.
+
 ## Limites connues
 
 - `/merge` : le badge `worktree · …` de la fenêtre de la branche ne se met à jour qu'à sa réouverture ;
