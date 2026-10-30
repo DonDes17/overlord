@@ -28,6 +28,8 @@ export interface AgentSession {
   channel: Channel;
   conversationId: number;
   claudeSessionId: string | null;
+  /** /plan: run the CLI with --permission-mode plan (read-only, the agent proposes a plan). Not persisted. */
+  planMode?: boolean;
   events: object[];
   currentProcess: ChildProcess | null;
   status: "idle" | "running";

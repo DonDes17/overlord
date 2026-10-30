@@ -41,6 +41,7 @@ const OVERLORD_COMMANDS: SlashCmd[] = [
   { name: "branch", description: "Branches git — /branch <nom> bascule, /branch -c <nom> crée, /branch -d <nom> supprime, /branch liste", scope: "overlord", type: "overlord" },
   { name: "clear", description: "Repartir d'un contexte vierge (la conversation affichée est conservée)", scope: "overlord", type: "overlord" },
   { name: "resume", description: "Reprendre une session Claude de ce projet — /resume liste, /resume <n ou id>", scope: "overlord", type: "overlord" },
+  { name: "plan", description: "Mode plan : l'agent propose sans modifier — /plan bascule, /plan on|off", scope: "overlord", type: "overlord" },
   { name: "help", description: "Lister les commandes Overlord disponibles", scope: "overlord", type: "overlord" },
 ];
 const OVERLORD_COMMAND_NAMES = new Set(OVERLORD_COMMANDS.map((c) => c.name));
@@ -1276,6 +1277,15 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
     if (agentStatus === "idle") refreshBranch();
   }, [agentStatus, refreshBranch]);
 
+  // /plan: server-side flag, applies to the next messages of this conversation.
+  const [planMode, setPlanMode] = useState(false);
+  useEffect(() => {
+    fetch(`/api/agent/plan?projectId=${project.id}&channel=${encodeURIComponent(channel)}`)
+      .then((r) => r.json())
+      .then((d) => d.ok && setPlanMode(!!d.enabled))
+      .catch(() => {});
+  }, [project.id, channel]);
+
   // Ephemeral info bubble for command output (not persisted — display only).
   const pushInfo = useCallback((text: string) => {
     setEntries((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: text }]);
@@ -1414,6 +1424,25 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
               );
           })
           .catch((err) => pushInfo(`Échec : ${String(err)}`));
+      } else if (cmd === "plan") {
+        const a = arg.toLowerCase();
+        const enabled = a === "on" ? true : a === "off" ? false : !planMode;
+        fetch("/api/agent/plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId: project.id, channel, enabled }),
+        })
+          .then((r) => r.json())
+          .then((d) => {
+            if (!d.ok) return pushInfo(`Échec : ${d.error}`);
+            setPlanMode(d.enabled);
+            pushInfo(
+              d.enabled
+                ? "**Mode plan activé** : l'agent peut lire le projet mais ne modifie aucun fichier, il propose un plan. `/plan` pour le désactiver."
+                : "**Mode plan désactivé** : l'agent peut de nouveau modifier les fichiers."
+            );
+          })
+          .catch((err) => pushInfo(`Échec : ${String(err)}`));
       } else if (cmd === "help") {
         pushInfo(
           `**Commandes Overlord**\n` +
@@ -1426,7 +1455,7 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
       onInputChange("");
       return true;
     },
-    [project.id, channel, tokenStats, models, model, handleModelChange, pushInfo, onInputChange, gitBranch]
+    [project.id, channel, tokenStats, models, model, handleModelChange, pushInfo, onInputChange, gitBranch, planMode]
   );
 
   const handleSend = useCallback(() => {
@@ -1674,6 +1703,11 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
           <span className="font-mono text-sm text-primary">
             claude @ {project.name}
           </span>
+          {planMode && (
+            <Badge variant="outline" className="text-[10px] border-sky-400/40 text-sky-400" title="Plan mode: the agent proposes, it does not edit files">
+              PLAN
+            </Badge>
+          )}
           {gitBranch.branch && (
             <span
               className="flex min-w-0 items-center gap-1 rounded border border-border px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"

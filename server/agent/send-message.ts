@@ -135,6 +135,10 @@ export function sendMessage(session: AgentSession, message: string) {
     args.push("--model", model);
   }
 
+  if (session.planMode) {
+    args.push("--permission-mode", "plan");
+  }
+
   if (session.claudeSessionId) {
     args.push("--resume", session.claudeSessionId);
   }

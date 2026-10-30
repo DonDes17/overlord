@@ -443,6 +443,25 @@ app.get("/api/agent/claude-sessions", (c) => {
   return c.json({ ok: true, current, sessions: listClaudeSessions(project.path, 10) });
 });
 
+// /plan: plan mode applies to the next messages of this conversation (read-only, the agent proposes a plan).
+app.get("/api/agent/plan", (c) => {
+  const projectId = Number(c.req.query("projectId"));
+  const channel = parseChannel(c.req.query("channel"));
+  if (!channel) return c.json({ ok: false, error: "Invalid channel" }, 400);
+  return c.json({ ok: true, enabled: !!agentSessions.get(sessionKey(projectId, channel))?.planMode });
+});
+
+app.post("/api/agent/plan", async (c) => {
+  const { projectId, channel: rawChannel, enabled } = await c.req.json();
+  const channel = parseChannel(rawChannel);
+  const project = db.select().from(projects).where(eq(projects.id, Number(projectId))).get();
+  if (!project || !channel || typeof enabled !== "boolean") return c.json({ ok: false, error: "projectId, channel and enabled are required" }, 400);
+
+  const session = getOrCreateSession(project.id, project.path, channel);
+  session.planMode = enabled;
+  return c.json({ ok: true, enabled });
+});
+
 // /clear: the next message starts a fresh Claude session. The conversation stays on screen.
 app.post("/api/agent/clear", async (c) => {
   const { projectId, channel: rawChannel } = await c.req.json();
