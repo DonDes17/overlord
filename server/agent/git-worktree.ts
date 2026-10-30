@@ -45,21 +45,26 @@ export function worktreeSlug(name: string, conversationId: number): string {
   return `${base || "branch"}-${conversationId}`;
 }
 
-// A symlinked node_modules is not matched by a `node_modules/` ignore pattern (git does not see
-// a directory), so it would be added to every snapshot. `info/exclude` is local and shared by
-// all worktrees of the repo.
-function excludeNodeModules(repoPath: string) {
+/**
+ * Add a pattern to the repo's local exclude file (`<git-common-dir>/info/exclude`): shared by all its
+ * worktrees, never committed, so it hides files from `git status` and from the `git add -A` of snapshots
+ * without touching the project's own .gitignore. Idempotent. Throws when `repoPath` is not a git repo.
+ *
+ * Used for a symlinked node_modules (not matched by a `node_modules/` ignore pattern, since git does not
+ * see a directory) and for the .codegraph/ folder CodeGraph creates in a project.
+ */
+export function addLocalExclude(repoPath: string, pattern: string) {
   const commonDir = git(repoPath, ["rev-parse", "--git-common-dir"]);
   const infoDir = join(isAbsolute(commonDir) ? commonDir : resolve(repoPath, commonDir), "info");
   const file = join(infoDir, "exclude");
   mkdirSync(infoDir, { recursive: true });
   const current = existsSync(file) ? readFileSync(file, "utf-8") : "";
-  if (current.split("\n").some((l) => l.trim() === "/node_modules")) return;
-  appendFileSync(file, `${current && !current.endsWith("\n") ? "\n" : ""}/node_modules\n`);
+  if (current.split("\n").some((l) => l.trim() === pattern)) return;
+  appendFileSync(file, `${current && !current.endsWith("\n") ? "\n" : ""}${pattern}\n`);
 }
 
 function prepareWorktree(repoPath: string, dir: string) {
-  excludeNodeModules(repoPath);
+  addLocalExclude(repoPath, "/node_modules");
 
   const modules = join(repoPath, "node_modules");
   const link = join(dir, "node_modules");
