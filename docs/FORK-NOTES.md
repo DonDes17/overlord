@@ -36,7 +36,7 @@ Ce fichier sert de contexte pour Claude Code quand on travaille sur ce repo.
 - Le chat lance `claude --print` (headless). Les commandes interactives du CLI (`/compact`,
   `/permissions`, `/rewind`…) apparaissent dans l’autocomplétion mais **ne font rien**.
   (`/clear` et `/resume` sont désormais gérées par Overlord, voir ci-dessous.)
-- Overlord intercepte ses propres commandes : `/model`, `/stop`, `/cost`, `/branch`, `/clear`, `/resume`, `/plan`, `/worktree`, `/help`
+- Overlord intercepte ses propres commandes : `/model`, `/stop`, `/cost`, `/branch`, `/clear`, `/resume`, `/plan`, `/worktree`, `/merge`, `/help`
   (`OVERLORD_COMMANDS` et `handleSend` dans `src/components/ChatTab.tsx`).
   Les commandes perso et plugins (`/aidd-*`…) passent au CLI et fonctionnent.
 - Skills et hooks Claude Code s’appliquent dans le chat (un message = un `UserPromptSubmit`).
@@ -153,7 +153,7 @@ diffs, undo).
 - **Suppression** d'une branche ou d'un projet : le worktree n'est retiré que s'il est propre et sans
   commit non fusionné ; sinon il reste sur disque, avec son chemin affiché (bandeau dans l'onglet
   Conversations). L'onglet affiche `⎇ overlord/…` avec `n~` fichiers modifiés et `n↑` commits en avance.
-- **Récupérer le travail** (pas d'interface de fusion) :
+- **Récupérer le travail** : `/merge` (voir section 9) fait tout ça depuis Overlord. À la main :
   1. commiter dans le worktree (demander à l'agent « commite », ou `git add -A && git commit` dans le dossier
      donné par `/worktree`) : sans commit, rien n'est sauvegardé dans la branche git ;
   2. depuis le **dépôt principal** : `git switch main && git merge overlord/<nom>`, ou pousser la branche et
@@ -175,10 +175,43 @@ diffs, undo).
   (il sautait avant le `/`). Il est maintenant replacé à la fin, seulement si l'éditeur a le focus.
 - Fichiers : `src/components/ChatTab.tsx` (`handleKeyDown`), `src/components/RichPasteInput.tsx`.
 
+### 9. `/merge` — `feat/merge-cmd`
+
+Dans une branche avec worktree : `/merge` ramène le travail sur la branche de base, `/merge --pr` ouvre
+une PR. À **relancer** jusqu'à la fin : chaque appel fait ce qu'il peut et s'arrête à l'étape qui a
+besoin de l'agent (`POST /api/conversations/:id/merge`, réponse avec `step`).
+
+1. Modifications non commitées (ou fusion résolue mais pas commitée) → `commit_needed` : l'agent de la
+   branche reçoit la consigne de commiter avec un message clair.
+2. La branche de base est fusionnée **dans le worktree** (`git merge`) : en cas de conflit → `conflicts`,
+   l'état reste dans le worktree et l'agent reçoit la consigne de les résoudre. La base ne reçoit donc
+   jamais de fusion en conflit.
+3. `/merge` : `git merge --ff-only` dans le dossier principal (qui doit être sur la branche de base, sinon
+   message explicite), puis le worktree et la branche `overlord/…` sont supprimés (`merged`). La
+   conversation continue dans le dossier principal, avec une session Claude vierge.
+4. `/merge --pr` : mise à jour depuis `origin/<base>` (fetch best-effort), `git push -u origin
+   overlord/<nom>`, puis `gh pr create --repo <dépôt> --base <base> --head overlord/<nom> --fill`.
+   Rien n'est fusionné en local ; le worktree est conservé. Si la PR existe déjà, son URL est renvoyée.
+
+- **Dépôt cible** : calculé depuis le `origin` **du projet** (`git remote get-url origin` → `owner/repo`) et
+  passé explicitement à `--repo` : `gh` ne devine jamais (sur un fork il viserait l'upstream, et chaque
+  projet Overlord a son propre remote). Uniquement GitHub (`github.com`, ssh ou https), avec `gh` installé
+  et connecté ; sinon message clair, et la branche est quand même poussée si l'échec vient de `gh`.
+- La branche de base est celle du dossier principal **à la création du worktree** (colonne
+  `worktree_base`).
+- Refusé (409) tant que l'agent tourne dans le worktree.
+- Fichiers : `server/agent/git-merge.ts` (nouveau), `server/routes/conversations.ts` (route + helper
+  `detachWorktree` partagé avec `/worktree -d`), `ChatTab.tsx` (`/merge`, `sendPrompt`).
+- Testé sur dépôts jetables : cas heureux, base qui avance, conflit puis résolution, dossier principal sur
+  une autre branche, push vers un dépôt nu et PR avec un faux `gh`. **La création réelle d'une PR n'a pas
+  été testée** (à essayer une fois sur un dépôt GitHub jetable).
+
 ## Limites connues
 
+- `/merge` : le badge `worktree · …` de la fenêtre de la branche ne se met à jour qu'à sa réouverture ;
+  la liste des branches de l'onglet Conversations se rafraîchit au prochain chargement.
 - Worktrees : pas de CodeGraph (l'index est par chemin) ; `node_modules` partagé (deux branches qui
-  changent des dépendances se gênent) ; pas d'interface de fusion ; création uniquement au moment où la
+  changent des dépendances se gênent) ; création uniquement au moment où la
   branche est créée (pas d'ajout a posteriori) ; une branche git ne peut être extraite qu'à un seul
   endroit (`/branch <nom>` sur une branche déjà utilisée ailleurs renvoie l'erreur de git).
 
@@ -194,7 +227,7 @@ diffs, undo).
 | 5 ✅ | `/clear` et `/resume` | `feat/session-cmds` |
 | 6 ✅ | `/plan` (`--permission-mode plan`) | `feat/plan-mode` |
 | 7 ✅ | Worktrees : deux tâches en parallèle sur un même repo | `feat/worktrees` |
-| — | `/merge` : commit + fusion + nettoyage d'un worktree depuis Overlord (gérer les conflits) | à définir |
+| 8 ✅ | `/merge` : commit + fusion + nettoyage d'un worktree, ou PR, depuis Overlord | `feat/merge-cmd` |
 | — | Annulation par bloc (hunk) dans la fenêtre de diff | à définir |
 | — | Index temporaire aussi dans `rollbackToSnapshot` | à définir |
 
