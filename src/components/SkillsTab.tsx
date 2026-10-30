@@ -107,7 +107,7 @@ export function SkillsTab({ project }: Props) {
       <Card>
         <CardHeader>
           <CardTitle className="text-sm flex items-center gap-2">
-            <FolderKanban className="h-4 w-4 text-emerald-400" />
+            <FolderKanban className="h-4 w-4 text-success" />
             Project skills ({filtered.project.length})
             <span className="text-[10px] text-muted-foreground font-normal font-mono ml-1">.claude/</span>
           </CardTitle>
@@ -136,7 +136,7 @@ export function SkillsTab({ project }: Props) {
       <Card>
         <CardHeader>
           <CardTitle className="text-sm flex items-center gap-2">
-            <Globe className="h-4 w-4 text-blue-400" />
+            <Globe className="h-4 w-4 text-muted-foreground" />
             Global skills ({filtered.global.length})
             <span className="text-[10px] text-muted-foreground font-normal font-mono ml-1">~/.claude/</span>
           </CardTitle>
@@ -206,7 +206,7 @@ function SkillCard({ skill, onClick, onDelete }: { skill: Skill; onClick: () => 
           className="ml-auto shrink-0 opacity-0 group-hover/skill:opacity-100 transition-opacity flex h-5 w-5 items-center justify-center rounded hover:bg-secondary cursor-pointer"
           title="Copy command"
         >
-          {copied ? <Check className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3 text-muted-foreground" />}
+          {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3 text-muted-foreground" />}
         </span>
         <span
           role="button"

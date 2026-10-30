@@ -236,8 +236,8 @@ export function TurnDiffModal({
           {data?.ok && (
             <span className="text-xs text-muted-foreground">
               {files.length} file{files.length === 1 ? "" : "s"} ·{" "}
-              <span className="text-green-500">+{totals.added}</span>{" "}
-              <span className="text-red-500">−{totals.deleted}</span>
+              <span className="text-success">+{totals.added}</span>{" "}
+              <span className="text-destructive">−{totals.deleted}</span>
               {data.toWorkingTree && " · up to the current working tree"}
             </span>
           )}
@@ -311,7 +311,7 @@ export function TurnDiffModal({
                     <span className="text-muted-foreground">bin</span>
                   ) : (
                     <span className="shrink-0 tabular-nums">
-                      <span className="text-green-500">+{f.added}</span> <span className="text-red-500">−{f.deleted}</span>
+                      <span className="text-success">+{f.added}</span> <span className="text-destructive">−{f.deleted}</span>
                     </span>
                   )}
                 </button>

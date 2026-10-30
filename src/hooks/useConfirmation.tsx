@@ -57,7 +57,7 @@ export function useConfirmation() {
           showCloseButton={false}
           className="overflow-hidden border-border/80 p-0 shadow-2xl sm:max-w-md"
         >
-          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-destructive via-primary to-amber-400" />
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-destructive via-primary to-warning" />
           <div className="p-5">
             <DialogHeader className="gap-3">
               <div className="flex items-start gap-3">

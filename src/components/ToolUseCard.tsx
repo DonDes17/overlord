@@ -23,16 +23,18 @@ interface EditorInfo {
 
 const ASK_USER_QUESTION = "AskUserQuestion";
 
+// Tools that change things (Edit, Write, Command) are drawn brighter than the read-only ones: the
+// difference is brightness and icon, not a different hue per tool.
 const TOOL_CONFIG: Record<string, { icon: typeof FileText; label: string; color: string }> = {
   AskUserQuestion: { icon: HelpCircle, label: "Questions",     color: "text-primary" },
-  Read:       { icon: Eye,          label: "Read",          color: "text-blue-400" },
-  Edit:       { icon: Pencil,       label: "Edit",          color: "text-amber-400" },
-  Write:      { icon: FilePlus,     label: "Write",         color: "text-green-400" },
-  Bash:       { icon: Terminal,     label: "Command",       color: "text-purple-400" },
-  Glob:       { icon: FolderSearch, label: "Search",        color: "text-cyan-400" },
-  Grep:       { icon: Search,       label: "Search",        color: "text-cyan-400" },
-  WebFetch:   { icon: Globe,        label: "Web",           color: "text-pink-400" },
-  WebSearch:  { icon: Globe,        label: "Web search",    color: "text-pink-400" },
+  Read:       { icon: Eye,          label: "Read",          color: "text-muted-foreground" },
+  Edit:       { icon: Pencil,       label: "Edit",          color: "text-foreground" },
+  Write:      { icon: FilePlus,     label: "Write",         color: "text-foreground" },
+  Bash:       { icon: Terminal,     label: "Command",       color: "text-foreground" },
+  Glob:       { icon: FolderSearch, label: "Search",        color: "text-muted-foreground" },
+  Grep:       { icon: Search,       label: "Search",        color: "text-muted-foreground" },
+  WebFetch:   { icon: Globe,        label: "Web",           color: "text-muted-foreground" },
+  WebSearch:  { icon: Globe,        label: "Web search",    color: "text-muted-foreground" },
 };
 
 function getToolInfo(name: string) {
@@ -185,14 +187,14 @@ function DiffView({ oldStr, newStr }: { oldStr: string; newStr: string }) {
   return (
     <div className="mt-2 rounded-md border border-border bg-secondary/50 p-2 font-mono text-[11px] leading-relaxed overflow-x-auto select-text">
       {oldStr && (
-        <div className="text-red-400/80">
+        <div className="text-destructive/80">
           {oldStr.split("\n").map((line, i) => (
             <div key={`old-${i}`}>- {line}</div>
           ))}
         </div>
       )}
       {newStr && (
-        <div className="text-green-400/80 mt-1">
+        <div className="text-success/80 mt-1">
           {newStr.split("\n").map((line, i) => (
             <div key={`new-${i}`}>+ {line}</div>
           ))}
@@ -467,7 +469,7 @@ export const ToolUseCard = React.memo(function ToolUseCard({ name, input, result
           )}
 
           {hasContent && (
-            <div className="mt-1 rounded-md border border-border bg-secondary/50 p-2 font-mono text-[11px] leading-relaxed overflow-x-auto max-h-48 overflow-y-auto text-green-400/80 select-text">
+            <div className="mt-1 rounded-md border border-border bg-secondary/50 p-2 font-mono text-[11px] leading-relaxed overflow-x-auto max-h-48 overflow-y-auto text-success/80 select-text">
               {input.content.split("\n").map((line: string, i: number) => (
                 <div key={i}>+ {line}</div>
               ))}

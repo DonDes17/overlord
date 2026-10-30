@@ -46,7 +46,7 @@ export function SubConversationModal({ project, conversation, onClose }: Props) 
           </span>
           {conversation.worktreeBranch && (
             <span
-              className="truncate rounded border border-sky-400/40 px-1.5 py-0.5 font-mono text-[10px] text-sky-400"
+              className="truncate rounded border border-primary/40 px-1.5 py-0.5 font-mono text-[10px] text-primary"
               title={conversation.worktreePath ?? undefined}
             >
               worktree · {conversation.worktreeBranch}
