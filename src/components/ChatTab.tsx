@@ -5,9 +5,10 @@ import { cn } from "@/lib/utils";
 import { Square, Copy, Check, ArrowDown, Undo2, Plus, SendHorizontal, Pencil, X, GitBranch, FileDiff, Gauge, Network } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { MarkdownContent } from "./MarkdownContent.js";
-import { ToolUseCard } from "./ToolUseCard.js";
+import { ASK_USER_QUESTION, ToolUseCard } from "./ToolUseCard.js";
 import { TurnDiffModal } from "./TurnDiffModal.js";
 import { TurnFooter } from "./TurnFooter.js";
+import { ToolGroup } from "./ToolGroup.js";
 import { RichPasteInput, type RichPasteInputHandle, type FileBlock } from "./RichPasteInput.js";
 import type { Project } from "../types.js";
 import { formatModelVersion } from "../lib/models.js";
@@ -615,6 +616,23 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
   const [entries, setEntries] = useState<ChatEntry[]>([]);
   // For each user message, the snapshot taken before the next user message:
   // that pair brackets exactly what one turn changed.
+  // Consecutive tool calls are folded into one line (ToolGroup). A questions form is something the user has
+  // to answer, so it always stays on its own.
+  const rows = useMemo(() => {
+    type Row = { kind: "entry"; entry: ChatEntry } | { kind: "tools"; entries: ChatEntry[] };
+    const out: Row[] = [];
+    for (const e of entries) {
+      const last = out[out.length - 1];
+      if (e.role === "tool" && (e.toolName ?? e.content) !== ASK_USER_QUESTION) {
+        if (last?.kind === "tools") last.entries.push(e);
+        else out.push({ kind: "tools", entries: [e] });
+      } else {
+        out.push({ kind: "entry", entry: e });
+      }
+    }
+    return out;
+  }, [entries]);
+
   // For each turn that has a snapshot, the entry that closes it (the last one before the next user message):
   // that is where its summary footer goes.
   const turnFooterAfter = useMemo(() => {
@@ -2049,43 +2067,52 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
           </p>
         )}
 
-        {entries.map((entry) => {
-          const row = entry.role === "tool" ? (
-            <ToolUseCard
-              key={entry.id}
-              name={entry.toolName ?? entry.content}
-              input={entry.toolInput}
-              result={entry.toolResult}
-              onAnswerQuestions={handleAnswerQuestions}
-            />
-          ) : entry.role === "user" ? (
-            <UserMessage
-              key={entry.id}
-              entry={entry}
-              projectId={project.id}
-              channel={channel}
-              nextSnapshotSha={nextSnapshotById.get(entry.id)}
-              onBranch={onCreateBranch ? () => handleBranch(entry) : undefined}
-              onRollback={(content) => {
-                onInputChange(content);
-                // Remove this message and everything after from entries
-                setEntries((prev) => {
-                  const idx = prev.findIndex((e) => e.id === entry.id);
-                  return idx >= 0 ? prev.slice(0, idx) : prev;
-                });
-              }}
-            />
-          ) : (
-            <MessageBubble
-              key={entry.id}
-              content={entry.content}
-              projectId={project.id}
-              onBranch={onCreateBranch ? () => handleBranch(entry) : undefined}
-            />
-          );
-          const owner = turnFooterAfter.get(entry.id);
+        {rows.map((r, index) => {
+          const lastEntry = r.kind === "entry" ? r.entry : r.entries[r.entries.length - 1];
+          const entry = r.kind === "entry" ? r.entry : null;
+          const toolProps = (e: ChatEntry) => ({ name: e.toolName ?? e.content, input: e.toolInput, result: e.toolResult });
+          const row =
+            r.kind === "tools" ? (
+              r.entries.length === 1 ? (
+                <ToolUseCard key={r.entries[0].id} {...toolProps(r.entries[0])} onAnswerQuestions={handleAnswerQuestions} />
+              ) : (
+                <ToolGroup
+                  key={r.entries[0].id}
+                  tools={r.entries.map((e) => ({ id: e.id, ...toolProps(e) }))}
+                  live={agentStatus !== "idle" && !streamingText && index === rows.length - 1}
+                  onAnswerQuestions={handleAnswerQuestions}
+                />
+              )
+            ) : entry!.role === "tool" ? (
+              <ToolUseCard key={entry!.id} {...toolProps(entry!)} onAnswerQuestions={handleAnswerQuestions} />
+            ) : entry!.role === "user" ? (
+              <UserMessage
+                key={entry!.id}
+                entry={entry!}
+                projectId={project.id}
+                channel={channel}
+                nextSnapshotSha={nextSnapshotById.get(entry!.id)}
+                onBranch={onCreateBranch ? () => handleBranch(entry!) : undefined}
+                onRollback={(content) => {
+                  onInputChange(content);
+                  // Remove this message and everything after from entries
+                  setEntries((prev) => {
+                    const idx = prev.findIndex((e) => e.id === entry!.id);
+                    return idx >= 0 ? prev.slice(0, idx) : prev;
+                  });
+                }}
+              />
+            ) : (
+              <MessageBubble
+                key={entry!.id}
+                content={entry!.content}
+                projectId={project.id}
+                onBranch={onCreateBranch ? () => handleBranch(entry!) : undefined}
+              />
+            );
+          const owner = turnFooterAfter.get(lastEntry.id);
           return owner?.snapshotSha ? (
-            <React.Fragment key={entry.id}>
+            <React.Fragment key={lastEntry.id}>
               {row}
               <TurnFooter
                 projectId={project.id}
@@ -2110,20 +2137,15 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
           </div>
         )}
 
-        {/* Typing indicator when agent is working but no text yet */}
+        {/* Typing indicator when agent is working but no text yet: same plain look as an answer */}
         {isWorking && !streamingText && (
-          <div className="max-w-[90%] rounded-lg border border-border bg-card px-4 py-3">
-            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider opacity-50">
-              Claude
-            </div>
-            <div className="flex items-center gap-1 py-1">
-              <span className="h-2 w-2 rounded-full bg-primary/60 animate-bounce [animation-delay:-0.3s]" />
-              <span className="h-2 w-2 rounded-full bg-primary/60 animate-bounce [animation-delay:-0.15s]" />
-              <span className="h-2 w-2 rounded-full bg-primary/60 animate-bounce" />
-              <span className="ml-2 text-[11px] text-muted-foreground">
-                {agentStatus === "waiting" ? `Starting... ${formatElapsed(elapsed)}` : `${formatElapsed(elapsed)}`}
-              </span>
-            </div>
+          <div className="flex items-center gap-1 py-1">
+            <span className="h-2 w-2 rounded-full bg-primary/60 animate-bounce [animation-delay:-0.3s]" />
+            <span className="h-2 w-2 rounded-full bg-primary/60 animate-bounce [animation-delay:-0.15s]" />
+            <span className="h-2 w-2 rounded-full bg-primary/60 animate-bounce" />
+            <span className="ml-2 text-[11px] text-muted-foreground">
+              {agentStatus === "waiting" ? `Starting... ${formatElapsed(elapsed)}` : `${formatElapsed(elapsed)}`}
+            </span>
           </div>
         )}
 

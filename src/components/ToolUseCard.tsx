@@ -21,7 +21,7 @@ interface EditorInfo {
   cmd: string;
 }
 
-const ASK_USER_QUESTION = "AskUserQuestion";
+export const ASK_USER_QUESTION = "AskUserQuestion";
 
 // Tools that change things (Edit, Write, Command) are drawn brighter than the read-only ones: the
 // difference is brightness and icon, not a different hue per tool.
@@ -37,7 +37,7 @@ const TOOL_CONFIG: Record<string, { icon: typeof FileText; label: string; color:
   WebSearch:  { icon: Globe,        label: "Web search",    color: "text-muted-foreground" },
 };
 
-function getToolInfo(name: string) {
+export function getToolInfo(name: string) {
   const shortName = name.includes("__") ? name.split("__").pop() ?? name : name;
   return TOOL_CONFIG[shortName] ?? { icon: FileText, label: shortName, color: "text-muted-foreground" };
 }
@@ -49,7 +49,7 @@ function shortenPath(p: string): string {
   return parts.length > 3 ? parts.slice(-3).join("/") : p;
 }
 
-function formatInput(name: string, input?: Record<string, any>): string | null {
+export function formatInput(name: string, input?: Record<string, any>): string | null {
   if (!input) return null;
   if (name === "Read" && input.file_path) return shortenPath(input.file_path);
   if (name === "Edit" && input.file_path) return shortenPath(input.file_path);
