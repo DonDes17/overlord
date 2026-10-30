@@ -275,6 +275,17 @@ besoin de l'agent (`POST /api/conversations/:id/merge`, réponse avec `step`).
   bouton discret (jauge) ouvre un panneau avec le détail (se ferme par clic extérieur ou Échap).
 - **Largeur** : colonne de 52 rem ; seuls les paragraphes, listes et titres sont limités à 72 caractères,
   les blocs de code, tableaux, commandes et la zone de saisie prennent toute la colonne.
+- **Bandeau CodeGraph** (`feat/codegraph-hint`) : une ligne discrète au-dessus de la saisie (icône, texte,
+  `Indexer`, `Plus tard`, ✕) au lieu d'une carte verte. `Plus tard` le cache 7 jours, ✕ le cache pour ce
+  projet ; stocké par projet dans le navigateur (`src/lib/codegraph-hint.ts`), et CodeGraph reste
+  disponible dans Réglages. Le chiffre « -94 % de tool calls », jamais vérifié, a été retiré du texte.
+- **`.codegraph/` masqué de git** : `codegraph init` laisse un `config.json` et un `.gitignore` non suivis
+  dans le projet, ce qui faisait apparaître le dossier dans `git status`, dans les snapshots (`git add -A`)
+  et dans les diffs par tour. Overlord ajoute `/.codegraph/` à `.git/info/exclude` (local, jamais commité,
+  sans toucher au `.gitignore` du projet ; `addLocalExclude` dans `server/agent/git-worktree.ts`, aussi
+  utilisé pour `node_modules` des worktrees) : après une indexation réussie, **et** à la première lecture
+  du statut CodeGraph d'un projet déjà indexé (une fois par session de l'app), donc les anciens projets
+  sont corrigés dès qu'on ouvre leur chat. Idempotent, sans effet hors d'un dépôt git.
 - **À faire** : migrer les ~100 couleurs Tailwind écrites en dur (`green`, `emerald`, `amber`, `yellow`,
   `sky`, `cyan`, `blue`, `purple`, `violet`) vers `success`, `warning`, `destructive` et l'accent ; alléger
   l'en-tête (métriques) et le bandeau CodeGraph ; pied de tour avec lien vers le diff.
