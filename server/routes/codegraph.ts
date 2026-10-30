@@ -6,6 +6,7 @@ import { existsSync, rmSync } from "fs";
 import { join, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { spawn } from "child_process";
+import { addLocalExclude } from "../agent/git-worktree.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -31,14 +32,28 @@ function isIndexed(projectPath: string): boolean {
   return existsSync(join(projectPath, ".codegraph"));
 }
 
+// Projects whose .codegraph/ has already been hidden from git during this run.
+const hiddenFromGit = new Set<string>();
+
+// .codegraph/ keeps an untracked config.json and .gitignore, which would show up in git status, in the
+// snapshots and in the turn diffs. Hidden through the repo's local exclude file (never committed).
+// Done here as well as after indexing so projects indexed before this change are fixed when opened.
+function hideCodegraphFromGit(projectPath: string) {
+  if (hiddenFromGit.has(projectPath)) return;
+  hiddenFromGit.add(projectPath);
+  try { addLocalExclude(projectPath, "/.codegraph/"); } catch {} // not a git repo: nothing to hide from
+}
+
 // GET /api/codegraph/:projectId/status
 app.get("/:projectId/status", (c) => {
   const projectId = Number(c.req.param("projectId"));
   const project = db.select().from(projects).where(eq(projects.id, projectId)).get();
   if (!project) return c.json({ error: "Not found" }, 404);
 
+  const indexed = isIndexed(project.path);
+  if (indexed) hideCodegraphFromGit(project.path);
   return c.json({
-    indexed: isIndexed(project.path),
+    indexed,
     indexing: indexingProjects.has(projectId),
   });
 });
@@ -63,6 +78,8 @@ app.post("/:projectId/init", async (c) => {
         console.log(`[codegraph:${projectId}] init failed (code=${res.code}): ${res.stderr.slice(0, 500)}`);
       } else {
         console.log(`[codegraph:${projectId}] indexed successfully`);
+        hiddenFromGit.delete(project.path); // re-checked on the next status read
+        hideCodegraphFromGit(project.path);
       }
     })
     .catch((err) => console.log(`[codegraph:${projectId}] failed:`, err))

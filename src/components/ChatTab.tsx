@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Square, Copy, Check, ArrowDown, Undo2, Plus, SendHorizontal, Pencil, X, GitBranch, FileDiff, Gauge } from "lucide-react";
+import { Square, Copy, Check, ArrowDown, Undo2, Plus, SendHorizontal, Pencil, X, GitBranch, FileDiff, Gauge, Network } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { MarkdownContent } from "./MarkdownContent.js";
 import { ToolUseCard } from "./ToolUseCard.js";
@@ -10,6 +10,7 @@ import { TurnDiffModal } from "./TurnDiffModal.js";
 import { RichPasteInput, type RichPasteInputHandle, type FileBlock } from "./RichPasteInput.js";
 import type { Project } from "../types.js";
 import { formatModelVersion } from "../lib/models.js";
+import { dismissCodegraphHint, isCodegraphHintVisible, snoozeCodegraphHint } from "../lib/codegraph-hint.js";
 import { useModels } from "../hooks/useModels.js";
 
 type AgentStatus = "idle" | "waiting" | "running";
@@ -670,6 +671,9 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
     }, 3000);
     return () => clearInterval(interval);
   }, [fetchCodegraphStatus, codegraphStatus.indexing]);
+
+  const [codegraphHint, setCodegraphHint] = useState(() => isCodegraphHintVisible(project.id));
+  useEffect(() => setCodegraphHint(isCodegraphHintVisible(project.id)), [project.id]);
 
   const handleIndexCodegraph = useCallback(async () => {
     setCodegraphStatus((s) => ({ ...s, indexing: true }));
@@ -2220,22 +2224,43 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
           </div>
         )}
 
-        {/* CodeGraph index suggestion */}
-        {channel === "chat" && !codegraphStatus.indexed && !codegraphStatus.indexing && (
-          <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-emerald-400/20 bg-emerald-400/5 px-3 py-2 text-xs">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-emerald-400 font-medium">Activer CodeGraph</span>
-              <span className="text-muted-foreground text-[10px]">
-                Index sémantique du code, -94% de tool calls pour Claude
-              </span>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs gap-1.5 shrink-0"
-              onClick={handleIndexCodegraph}
+        {/* CodeGraph index suggestion: a quiet line, easy to put off */}
+        {channel === "chat" && !codegraphStatus.indexed && !codegraphStatus.indexing && codegraphHint && (
+          <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <Network className="h-3.5 w-3.5 shrink-0" />
+            <span
+              className="min-w-0 flex-1 truncate"
+              title="Crée un dossier .codegraph/ dans le projet (masqué de git en local). Réglages > CodeGraph pour le retirer."
             >
+              Indexer le code avec CodeGraph pour que l'agent retrouve fichiers et symboles plus vite
+            </span>
+            <Button size="xs" variant="outline" className="shrink-0" onClick={handleIndexCodegraph}>
               Indexer
+            </Button>
+            <Button
+              size="xs"
+              variant="ghost"
+              className="shrink-0"
+              title="Me le reproposer dans 7 jours"
+              onClick={() => {
+                snoozeCodegraphHint(project.id);
+                setCodegraphHint(false);
+              }}
+            >
+              Plus tard
+            </Button>
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              className="shrink-0"
+              aria-label="Ne plus afficher"
+              title="Ne plus afficher pour ce projet (CodeGraph reste disponible dans les Réglages)"
+              onClick={() => {
+                dismissCodegraphHint(project.id);
+                setCodegraphHint(false);
+              }}
+            >
+              <X />
             </Button>
           </div>
         )}
