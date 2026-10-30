@@ -4,7 +4,14 @@ import { dirname, join, resolve } from "path";
 
 type Settings = {
   workspaceRoot?: string;
+  /** Tabs the user chose to hide (see TOGGLEABLE_TABS). Absent = the defaults below. */
+  hiddenTabs?: string[];
 };
+
+// Chat, Conversations and Settings are always there. The others can be hidden: that is a view
+// preference, nothing is removed, so the fork stays easy to sync with upstream.
+export const TOGGLEABLE_TABS = ["todos", "marketing", "skills", "summary", "insights"] as const;
+const DEFAULT_HIDDEN_TABS = ["marketing", "summary", "insights"];
 
 const dataDir = join(homedir(), ".overlord");
 const settingsPath = join(dataDir, "settings.json");
@@ -56,4 +63,27 @@ export function setWorkspaceRoot(path: string) {
 
   writeSettings({ ...readSettings(), workspaceRoot });
   return getWorkspaceSettings();
+}
+
+const isToggleableTab = (tab: unknown): tab is (typeof TOGGLEABLE_TABS)[number] =>
+  typeof tab === "string" && (TOGGLEABLE_TABS as readonly string[]).includes(tab);
+
+export function getHiddenTabs(): string[] {
+  const saved = readSettings().hiddenTabs;
+  return Array.isArray(saved) ? saved.filter(isToggleableTab) : DEFAULT_HIDDEN_TABS;
+}
+
+export function setHiddenTabs(tabs: unknown): string[] {
+  if (!Array.isArray(tabs)) throw new Error("hidden must be an array of tab names");
+  const hidden = [...new Set(tabs.filter(isToggleableTab))];
+  writeSettings({ ...readSettings(), hiddenTabs: hidden });
+  return hidden;
+}
+
+/**
+ * The project summary and the "learnings" are only shown in the Summary tab and each one costs an extra
+ * Claude call after a turn. With that tab hidden nobody reads them, so they are not generated.
+ */
+export function isSummaryEnabled(): boolean {
+  return !getHiddenTabs().includes("summary");
 }

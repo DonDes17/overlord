@@ -316,8 +316,9 @@ besoin de l'agent (`POST /api/conversations/:id/merge`, réponse avec `step`).
   une carte. **`AskUserQuestion` n'est jamais regroupé** : c'est un formulaire à remplir, il coupe le groupe.
   Le regroupement est calculé dans `ChatTab.tsx` (`rows`) ; le pied de tour se place après le dernier élément
   du tour, groupe compris. La bulle d'attente (« … 5s ») n'a plus ni carte ni étiquette `CLAUDE`.
-- **À faire** : les puces « sélectionné » des Réglages (outils autorisés) sont des aplats d'accent très
-  chargés ; alléger (fond translucide + bordure).
+- **Puces des Réglages** : une puce d'outil sélectionnée est un fond translucide avec bordure d'accent, texte
+  d'accent et ✓ (`aria-pressed`), plus un aplat d'accent : une longue liste reste lisible et l'état ne
+  dépend pas que de la couleur. Une puce d'outil personnalisé passe en rouge au survol (suppression).
 - **Tester le direct sans dépenser de tokens** : le serveur accepte `CLAUDE_PATH`, donc un faux `claude`
   (script Node) peut jouer un tour. Pour que le chat réagisse comme avec le vrai, il faut émettre **les
   deux** : des `stream_event` (`content_block_start`, `content_block_delta` avec `input_json_delta`,
@@ -327,6 +328,29 @@ besoin de l'agent (`POST /api/conversations/:id/merge`, réponse avec `step`).
 - **Méthode de vérification** : base temporaire (`HOME` factice) avec un projet et une conversation de
   démonstration, serveur sur un autre port (`PORT=4799`, `dist/client` construit), puis Electron caché
   (`BrowserWindow` avec `offscreen: true`, `capturePage()`) qui clique le projet et enregistre un PNG.
+
+### 12. Onglets masquables et analyses en arrière-plan — `feat/settings-cleanup`
+
+- **Onglets** : Todos, Skills, Marketing, Summary et Insights se masquent dans Réglages → *Visible tabs*
+  (réglage **global**, appliqué tout de suite). Chat, Conversations et Settings restent toujours là. Rien
+  n'est supprimé : le code reste intact, ce qui garde le fork facile à synchroniser avec l'auteur
+  (`git pull upstream main`) ; supprimer des fonctionnalités créerait des conflits à chaque mise à jour.
+  Stocké dans `~/.overlord/settings.json` (`hiddenTabs`) ; **par défaut masqués : Marketing, Summary,
+  Insights**. `GET` / `PUT /api/settings/tabs` (les noms inconnus ou non masquables sont ignorés). Un lien ou
+  un onglet mémorisé qui pointe vers un onglet masqué retombe sur Chat (`currentTab` dans `App.tsx`).
+- **Summary masqué = plus d'appels Claude inutiles** : après chaque tour réussi du chat principal, Overlord
+  lançait un second `claude --print` pour le résumé du projet (sans interrupteur) et, avec au moins 3 appels
+  d'outils ou 3 messages, un troisième pour les « learnings » (activé par défaut). Ces contenus ne sont
+  visibles que dans l'onglet Summary (jamais réinjectés dans les prompts ; seul l'export des learnings
+  écrit `.claude/skills/project-learnings.md`). `isSummaryEnabled()` (`server/settings.ts`) coupe les deux
+  tant que l'onglet est masqué. Ces appels laissaient aussi des sessions dans l'historique de la CLI
+  (8 trouvées sur 155 dans `~/.claude/projects`).
+- **Insights** : calculé en local à partir des fichiers de session de Claude Code (aucun token), mais les
+  coûts affichés appliquent les tarifs Opus 4.x à tout (hypothèse de l'auteur « 99 % Opus ») : surestimés
+  pour un usage Sonnet. Non corrigé.
+- **Tester ces appels** : faux `claude` (`CLAUDE_PATH`) qui note chaque invocation dans un fichier ; le tour du
+  chat reçoit `--output-format`, les analyses en arrière-plan non. Résultat vérifié : Summary masqué = 1 appel
+  par tour ; affiché = 1 appel + 2 analyses.
 
 ## Limites connues
 

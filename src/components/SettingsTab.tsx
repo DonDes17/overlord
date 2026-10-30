@@ -38,9 +38,20 @@ const DEFAULT_SYSTEM_PROMPT = "Match the language of the user's message in your 
 interface Props {
   project: Project;
   onProjectUpdate?: () => void;
+  /** Optional tabs currently hidden (global setting), and how to change it. */
+  hiddenTabs?: string[];
+  onHiddenTabsChange?: (hidden: string[]) => void;
 }
 
-export function SettingsTab({ project, onProjectUpdate }: Props) {
+const TAB_OPTIONS: { id: string; label: string; note: string }[] = [
+  { id: "todos", label: "Todos", note: "Task list. The agent can read and update it." },
+  { id: "skills", label: "Skills", note: "Skills and commands from your Claude folders." },
+  { id: "marketing", label: "Marketing", note: "Marketing assistant, drafts and assets." },
+  { id: "summary", label: "Summary", note: "Project summary and learnings. Generating them costs extra Claude calls after each turn, so it only happens while this tab is shown." },
+  { id: "insights", label: "Insights", note: "Activity dashboard computed from your local Claude Code sessions." },
+];
+
+export function SettingsTab({ project, onProjectUpdate, hiddenTabs, onHiddenTabsChange }: Props) {
   const [systemPrompt, setSystemPrompt] = useState(project.systemPrompt ?? "");
   const [model, setModel] = useState(project.model ?? "");
   const models = useModels();
@@ -215,7 +226,7 @@ export function SettingsTab({ project, onProjectUpdate }: Props) {
                   ))}
                 </div>
               </div>
-              <div>
+              <div className="mb-3">
                 <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Overlord MCP tools
                 </div>
@@ -246,7 +257,7 @@ export function SettingsTab({ project, onProjectUpdate }: Props) {
                         key={tool}
                         onClick={() => toggleTool(tool)}
                         title="Remove"
-                        className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-mono text-primary-foreground transition-colors hover:bg-primary/80"
+                        className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/15 px-2.5 py-1 text-xs font-mono text-primary transition-colors hover:border-destructive/40 hover:bg-destructive/15 hover:text-destructive"
                       >
                         {tool}
                         <Trash2 className="h-3 w-3 opacity-70" />
@@ -297,6 +308,36 @@ export function SettingsTab({ project, onProjectUpdate }: Props) {
               </select>
             </CardContent>
           </Card>
+
+          {/* Visible tabs: a global preference, applied as soon as it is changed */}
+          {hiddenTabs && onHiddenTabsChange && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Visible tabs</CardTitle>
+                <CardDescription className="text-xs">
+                  Applies to every project. Hiding a tab removes nothing: tick it again to bring it back.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2.5">
+                {TAB_OPTIONS.map((option) => (
+                  <label key={option.id} className="flex cursor-pointer items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={!hiddenTabs.includes(option.id)}
+                      onChange={(e) =>
+                        onHiddenTabsChange(e.target.checked ? hiddenTabs.filter((t) => t !== option.id) : [...hiddenTabs, option.id])
+                      }
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-primary"
+                    />
+                    <span>
+                      {option.label}
+                      <span className="block text-[11px] leading-snug text-muted-foreground">{option.note}</span>
+                    </span>
+                  </label>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Session analysis */}
           <Card>
@@ -570,16 +611,20 @@ function IndexingCard({ project }: { project: Project }) {
   );
 }
 
+// Selected = tinted fill, accent border and a check, not a solid block: a long list of selected tools
+// stays readable, and the state is not carried by colour alone.
 function ToolToggle({ tool, label, selected, onToggle }: { tool: string; label?: string; selected: boolean; onToggle: (t: string) => void }) {
   return (
     <button
       onClick={() => onToggle(tool)}
-      className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-mono transition-colors ${
+      aria-pressed={selected}
+      className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-mono transition-colors ${
         selected
-          ? "bg-primary text-primary-foreground"
-          : "bg-secondary text-muted-foreground hover:text-foreground"
+          ? "border-primary/40 bg-primary/15 text-primary"
+          : "border-transparent bg-secondary text-muted-foreground hover:text-foreground"
       }`}
     >
+      {selected && <Check className="h-3 w-3" />}
       {label ?? tool}
     </button>
   );

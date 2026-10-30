@@ -13,6 +13,7 @@ import { buildEffectiveSystemPrompt } from "./system-prompt.js";
 import { DEFAULT_ALLOWED_TOOLS } from "./default-tools.js";
 import { generateSummary } from "./summary.js";
 import { generateLearnings } from "./learnings.js";
+import { isSummaryEnabled } from "../settings.js";
 import { isIndexed as isCodegraphIndexed, runCodegraph, CODEGRAPH_BIN } from "../routes/codegraph.js";
 import { isCodeChannel, isSubChannel } from "./types.js";
 import type { AgentSession } from "./types.js";
@@ -297,11 +298,13 @@ export function sendMessage(session: AgentSession, message: string) {
     // Branches are ephemeral side-conversations: never let them overwrite the
     // project summary or spawn learnings the way the main chat does.
     if (code === 0 && !isSubChannel(session.channel)) {
-      generateSummary(session);
+      // Summary and learnings are shown in the Summary tab only: skipped when that tab is hidden.
+      const summaryEnabled = isSummaryEnabled();
+      if (summaryEnabled) generateSummary(session);
       if (session.channel === "chat" && isCodegraphIndexed(session.projectPath)) {
         runCodegraph(["sync", session.projectPath], session.projectPath, 60000).catch(() => {});
       }
-      if (session.channel === "chat" && project?.learningsEnabled !== false) {
+      if (summaryEnabled && session.channel === "chat" && project?.learningsEnabled !== false) {
         const toolUseCount = session.events.filter(
           (e: any) => e.type === "stream_event" && e.event?.type === "content_block_start" && e.event?.content_block?.type === "tool_use"
         ).length;
