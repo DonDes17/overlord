@@ -75,6 +75,18 @@ clic de confirmation. La conversation n’est pas modifiée.
 - Refusé (409) tant que l’agent tourne sur le projet (`agentSessions`, `status === "running"`).
 - Route : `POST /api/agent/revert` (`projectId`, `fromSha`, `toSha?`, `paths?`).
 - L’agent n’est pas prévenu de l’annulation : le lui dire au message suivant.
+- **Par bloc (hunk)** — `feat/hunk-undo` : un bouton `↶ Undo block` dans l'en-tête de chaque bloc du diff
+  (Split et Unified), avec le même second clic de confirmation (il se désarme seul après 4 s).
+  `POST /api/agent/revert` accepte `hunk: { path, index, header }` ; `revertHunk` (`git-diff.ts`) recalcule le
+  patch du fichier, en extrait le bloc et l'applique en inverse (`git apply -R`, même `applyReverse` que
+  l'annulation de tour). Le bloc est identifié par sa **position et ses numéros de ligne** (`@@ -a,b +c,d @@`) :
+  si le diff a changé depuis l'affichage, c'est refusé (« fermez et rouvrez la fenêtre ») plutôt que d'annuler
+  un autre bloc. Le client n'envoie jamais de texte de patch. Les décalages de lignes dus aux tours suivants
+  sont absorbés par `git apply` ; un conflit n'écrit rien. Pas de bouton pour les fichiers binaires,
+  lockfiles et renommés. diff2html ne permettant pas d'ajouter des boutons, ils sont injectés dans le DOM
+  après chaque rendu (`TurnDiffModal.tsx`, sélecteurs `td.d2h-info` + `d2h-code-line` / `d2h-code-side-line`).
+  Pour un tour passé, le diff est entre deux snapshots fixes et ne change pas après l'annulation : le bouton
+  passe à `✓ Undone` (état gardé en mémoire tant que la fenêtre est ouverte).
 
 ### 3. Snapshot qui préserve le staging — `fix/snapshot-keep-index`
 
@@ -222,6 +234,8 @@ besoin de l'agent (`POST /api/conversations/:id/merge`, réponse avec `step`).
   changent des dépendances se gênent) ; création uniquement au moment où la
   branche est créée (pas d'ajout a posteriori) ; une branche git ne peut être extraite qu'à un seul
   endroit (`/branch <nom>` sur une branche déjà utilisée ailleurs renvoie l'erreur de git).
+- Diff d'un tour passé : après un undo de fichier ou de tour, le diff affiché ne change pas (deux snapshots
+  fixes) ; seul l'undo par bloc l'indique (`✓ Undone`), pas encore l'undo de fichier ou de tour.
 - Rollback : ce que vous avez stagé **après** le snapshot reste stagé (le fichier revient à l'état du
   snapshot mais garde sa version stagée, donc `MM`) ; `git restore --staged <fichier>` pour l'enlever.
 
@@ -235,7 +249,7 @@ besoin de l'agent (`POST /api/conversations/:id/merge`, réponse avec `step`).
 | 6 ✅ | `/plan` (`--permission-mode plan`) | `feat/plan-mode` |
 | 7 ✅ | Worktrees : deux tâches en parallèle sur un même repo | `feat/worktrees` |
 | 8 ✅ | `/merge` : commit + fusion + nettoyage d'un worktree, ou PR, depuis Overlord | `feat/merge-cmd` |
-| — | Annulation par bloc (hunk) dans la fenêtre de diff | à définir |
+| 10 ✅ | Annulation par bloc (hunk) dans la fenêtre de diff | `feat/hunk-undo` |
 | 9 ✅ | Index temporaire aussi dans `rollbackToSnapshot` | `fix/rollback-keep-index` |
 
 ## Repères pour développer
