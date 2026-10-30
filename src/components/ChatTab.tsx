@@ -43,6 +43,7 @@ const OVERLORD_COMMANDS: SlashCmd[] = [
   { name: "resume", description: "Reprendre une session Claude de ce projet — /resume liste, /resume <n ou id>", scope: "overlord", type: "overlord" },
   { name: "plan", description: "Mode plan : l'agent propose sans modifier — /plan bascule, /plan on|off", scope: "overlord", type: "overlord" },
   { name: "worktree", description: "Worktree de cette branche — /worktree affiche l'état, /worktree -d le supprime", scope: "overlord", type: "overlord" },
+  { name: "merge", description: "Ramener le travail de cette branche (worktree) — /merge fusionne, /merge --pr ouvre une PR", scope: "overlord", type: "overlord" },
   { name: "help", description: "Lister les commandes Overlord disponibles", scope: "overlord", type: "overlord" },
 ];
 const OVERLORD_COMMAND_NAMES = new Set(OVERLORD_COMMANDS.map((c) => c.name));
@@ -1295,6 +1296,23 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
     setEntries((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: text }]);
   }, []);
 
+  // Send a message to the agent from code (used by /merge to hand it a task). Same path as handleSend:
+  // queued when the agent is busy, shown in the chat with a short label otherwise.
+  const sendPrompt = useCallback(
+    (content: string, label: string) => {
+      const ws = wsRef.current;
+      if (!ws) return;
+      if (agentStatus !== "idle" || messageQueue.length > 0) {
+        ws.send(JSON.stringify({ type: "queue:add", projectId: project.id, projectPath: project.path, content, channel }));
+        return;
+      }
+      setAgentStatus("waiting");
+      setEntries((prev) => [...prev, { id: crypto.randomUUID(), role: "user", content, displayContent: label }]);
+      ws.send(JSON.stringify({ type: "chat", projectId: project.id, projectPath: project.path, message: content, channel }));
+    },
+    [agentStatus, messageQueue, project.id, project.path, channel]
+  );
+
   // Intercept Overlord-native slash commands and run them locally instead of
   // sending them to the (headless) agent, where they'd do nothing. Returns true
   // if the input was a handled command.
@@ -1481,6 +1499,47 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
             })
             .catch((err) => pushInfo(`Échec : ${String(err)}`));
         }
+      } else if (cmd === "merge") {
+        const convId = /^sub:(\d+)$/.exec(channel)?.[1];
+        const mode = arg === "--pr" ? "pr" : arg === "" ? "local" : null;
+        if (!convId) {
+          pushInfo("`/merge` s'utilise dans une **branche avec worktree** (icône ⎇ d'un message, case « Isoler dans un worktree »).");
+        } else if (!mode) {
+          pushInfo("Usage : `/merge` (fusionne dans la branche de base et supprime le worktree), `/merge --pr` (pousse et ouvre une PR sur le dépôt du projet).");
+        } else {
+          pushInfo(mode === "pr" ? "Préparation de la PR…" : "Fusion en cours…");
+          fetch(`/api/conversations/${convId}/merge`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode }),
+          })
+            .then((r) => r.json())
+            .then((d) => {
+              if (!d.ok) return pushInfo(`**/merge interrompu** : ${d.error}`);
+              if (d.step === "commit_needed") {
+                pushInfo("Des modifications ne sont pas commitées : je demande à l'agent de les commiter. **Relancez `/merge` quand il a fini.**");
+                sendPrompt(d.prompt, "/merge : commit demandé à l'agent");
+              } else if (d.step === "conflicts") {
+                pushInfo(
+                  `La branche « ${d.base} » a avancé et entre en conflit avec ce travail (${(d.files as string[]).map((f) => `\`${f}\``).join(", ")}). ` +
+                    "Je demande à l'agent de les résoudre dans ce worktree. **Relancez `/merge` quand il a fini.**"
+                );
+                sendPrompt(d.prompt, "/merge : résolution des conflits demandée à l'agent");
+              } else if (d.step === "pr") {
+                pushInfo(`${d.existing ? "La PR existe déjà" : "**PR créée**"} : ${d.url}\nLe worktree est conservé jusqu'à sa fusion ; ensuite \`/worktree -d\`.`);
+              } else if (d.step === "merged") {
+                refreshBranch();
+                pushInfo(
+                  `**Fusionné dans \`${d.base}\`** (avance rapide).` +
+                    (d.cleaned
+                      ? " Le worktree et la branche git ont été supprimés ; cette branche travaille maintenant dans le dossier principal, avec une session Claude vierge."
+                      : ` Le nettoyage a échoué : ${d.warning}`) +
+                    (d.cleaned && d.warning ? `\n${d.warning}` : "")
+                );
+              }
+            })
+            .catch((err) => pushInfo(`**/merge interrompu** : ${String(err)}`));
+        }
       } else if (cmd === "help") {
         pushInfo(
           `**Commandes Overlord**\n` +
@@ -1493,7 +1552,7 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
       onInputChange("");
       return true;
     },
-    [project.id, channel, tokenStats, models, model, handleModelChange, pushInfo, onInputChange, gitBranch, planMode, refreshBranch]
+    [project.id, channel, tokenStats, models, model, handleModelChange, pushInfo, onInputChange, gitBranch, planMode, refreshBranch, sendPrompt]
   );
 
   const handleSend = useCallback(() => {

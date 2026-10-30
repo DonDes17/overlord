@@ -4,6 +4,8 @@ import { conversations, messages, projects, queuedMessages } from "../db/schema.
 import { eq, desc, and, like } from "drizzle-orm";
 import { agentSessions, sessionKey } from "../agent/sessions.js";
 import { createWorktree, removeWorktree, worktreeStatus } from "../agent/git-worktree.js";
+import { createPullRequest, fastForwardBase, prBaseRef, updateFromBase, worktreeGitState } from "../agent/git-merge.js";
+import { currentBranch } from "../agent/git-branch.js";
 import type { Channel } from "../agent/types.js";
 
 const app = new Hono();
@@ -49,6 +51,26 @@ function liveRunning(projectId: number, conversationId: number): boolean {
   const channel = `sub:${conversationId}` as Channel;
   const session = agentSessions.get(sessionKey(projectId, channel));
   return session?.status === "running";
+}
+
+type ConversationRow = typeof conversations.$inferSelect;
+
+// Remove a branch's worktree and send the conversation back to the project folder. Claude sessions
+// belong to a folder, so the old one cannot be resumed from the project folder.
+function detachWorktree(conv: ConversationRow, projectPath: string, force: boolean) {
+  const result = removeWorktree(projectPath, conv.worktreePath!, conv.worktreeBranch!, force);
+  if (!result.ok) return { ok: false as const, error: result.error, status: result.status };
+
+  db.update(conversations)
+    .set({ worktreePath: null, worktreeBranch: null, worktreeBase: null, claudeSessionId: null })
+    .where(eq(conversations.id, conv.id))
+    .run();
+  const session = agentSessions.get(sessionKey(conv.projectId, conv.channel as Channel));
+  if (session) {
+    session.projectPath = projectPath;
+    session.claudeSessionId = null;
+  }
+  return { ok: true as const, warning: result.error };
 }
 
 // --- Sub-conversations ("branches") ---------------------------------------
@@ -102,7 +124,7 @@ app.post("/sub", async (c) => {
     }
     updated = db
       .update(conversations)
-      .set({ worktreePath: result.worktree.path, worktreeBranch: result.worktree.branch })
+      .set({ worktreePath: result.worktree.path, worktreeBranch: result.worktree.branch, worktreeBase: result.worktree.base })
       .where(eq(conversations.id, created.id))
       .returning()
       .get();
@@ -171,20 +193,82 @@ app.delete("/:id/worktree", (c) => {
     return c.json({ ok: false, error: "L'agent tourne dans cette branche. Stoppez-le d'abord." }, 409);
   }
 
-  const result = removeWorktree(project.path, conv.worktreePath, conv.worktreeBranch, c.req.query("force") === "true");
+  const result = detachWorktree(conv, project.path, c.req.query("force") === "true");
   if (!result.ok) return c.json({ ok: false, error: result.error, status: result.status }, 409);
-
-  // Claude sessions belong to a folder: the old one cannot be resumed from the project folder.
-  db.update(conversations)
-    .set({ worktreePath: null, worktreeBranch: null, claudeSessionId: null })
-    .where(eq(conversations.id, conv.id))
-    .run();
-  if (session) {
-    session.projectPath = project.path;
-    session.claudeSessionId = null;
-  }
-  return c.json({ ok: true, warning: result.error });
+  return c.json({ ok: true, warning: result.warning });
 });
+
+// POST /api/conversations/:id/merge - bring a branch's worktree back (/merge).
+// Body: { mode: "local" | "pr" }. Meant to be re-run: each call does what it can and answers with the
+// `step` it stopped at. "commit_needed" and "conflicts" carry a `prompt` for the branch's agent.
+//   local: update from the base inside the worktree, fast-forward the base, remove the worktree.
+//   pr:    same update (from the remote's base), push, open a PR on the project's own origin.
+app.post("/:id/merge", async (c) => {
+  const { mode } = await c.req.json().catch(() => ({ mode: "local" }));
+  if (mode !== "local" && mode !== "pr") return c.json({ ok: false, error: "mode must be local or pr" }, 400);
+
+  const conv = db.select().from(conversations).where(eq(conversations.id, Number(c.req.param("id")))).get();
+  if (!conv) return c.json({ ok: false, error: "Not found" }, 404);
+  if (!conv.worktreePath || !conv.worktreeBranch) return c.json({ ok: false, error: "Cette branche n'a pas de worktree : il n'y a rien à fusionner." }, 400);
+  const project = db.select().from(projects).where(eq(projects.id, conv.projectId)).get();
+  if (!project) return c.json({ ok: false, error: "Project not found" }, 404);
+
+  const session = agentSessions.get(sessionKey(conv.projectId, conv.channel as Channel));
+  if (session?.status === "running") {
+    return c.json({ ok: false, error: "L'agent tourne dans cette branche. Attendez qu'il ait fini, ou stoppez-le." }, 409);
+  }
+
+  const base = conv.worktreeBase ?? currentBranch(project.path).branch;
+  if (!base) return c.json({ ok: false, error: "Le dossier principal est en HEAD détaché : pas de branche de base." }, 400);
+  const branch = conv.worktreeBranch;
+  const path = conv.worktreePath;
+
+  try {
+    // 1. Uncommitted work (or a resolved merge waiting for its commit) goes to the agent first.
+    const state = worktreeGitState(path);
+    if (state.conflicts.length > 0) {
+      return c.json({ ok: true, step: "conflicts", base, files: state.conflicts, prompt: conflictPrompt(base, state.conflicts) });
+    }
+    if (state.dirty) {
+      return c.json({ ok: true, step: "commit_needed", prompt: COMMIT_PROMPT });
+    }
+
+    // 2. Bring the base's news into the branch, in the worktree.
+    const ref = mode === "pr" ? prBaseRef(path, base) : base;
+    const update = updateFromBase(path, ref);
+    if (!update.ok) {
+      if (update.conflicts.length === 0) return c.json({ ok: false, error: update.error ?? "La mise à jour depuis la base a échoué." }, 400);
+      return c.json({ ok: true, step: "conflicts", base: ref, files: update.conflicts, prompt: conflictPrompt(ref, update.conflicts) });
+    }
+
+    // 3a. Pull request on the project's own remote.
+    if (mode === "pr") {
+      const pr = createPullRequest(project.path, path, branch, base);
+      if (!pr.ok) return c.json({ ok: false, error: pr.error }, 400);
+      return c.json({ ok: true, step: "pr", url: pr.url, existing: pr.existing, base });
+    }
+
+    // 3b. Local merge: fast-forward the base, then drop the worktree (nothing left to lose).
+    const ff = fastForwardBase(project.path, base, branch);
+    if (!ff.ok) return c.json({ ok: false, error: ff.error }, 400);
+    const cleaned = detachWorktree(conv, project.path, false);
+    return c.json({ ok: true, step: "merged", base, branch, cleaned: cleaned.ok, warning: cleaned.ok ? cleaned.warning : cleaned.error });
+  } catch (err) {
+    return c.json({ ok: false, error: String((err as { stderr?: string }).stderr || err) }, 500);
+  }
+});
+
+const COMMIT_PROMPT =
+  "Commite maintenant tous les changements de cette branche avec un message de commit clair et concis qui décrit ce qui a été fait " +
+  "(git add -A puis git commit). Si une fusion est en cours, termine-la avec git commit. Ne fais rien d'autre et ne pousse rien.";
+
+function conflictPrompt(base: string, files: string[]): string {
+  return (
+    `La branche de base « ${base} » a été fusionnée dans cette branche et il reste des conflits dans :\n` +
+    files.map((f) => `- ${f}`).join("\n") +
+    `\nRésous chaque conflit en gardant l'intention des deux côtés, puis finalise la fusion avec git add et git commit. Ne pousse rien.`
+  );
+}
 
 // POST /api/conversations/:id/read - clear the unread flag for a branch.
 app.post("/:id/read", (c) => {
