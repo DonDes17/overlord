@@ -34,6 +34,9 @@ type WorkspaceSettings = {
 const VISIBLE_TABS = ["chat", "conversations", "todos", "marketing", "skills", "summary", "insights", "settings"] as const;
 type VisibleTab = typeof VISIBLE_TABS[number];
 
+// Optional tabs the user can hide (Settings > Visible tabs). Until the setting is loaded, assume the server's default.
+const DEFAULT_HIDDEN_TABS = ["marketing", "summary", "insights"];
+
 const TAB_LABELS: Record<VisibleTab, string> = {
   chat: "Chat",
   conversations: "Conversations",
@@ -78,6 +81,19 @@ export function App() {
     return route.projectName ? route.tab : normalizeTab(localStorage.getItem("overlord:tab"));
   });
   const [tabMenuOpen, setTabMenuOpen] = useState(false);
+
+  // A hidden tab is not offered, and a link or a remembered tab that points to one falls back to Chat.
+  const { data: tabSettings, refetch: refetchTabSettings } = useApi<{ hidden: string[] }>("/settings/tabs");
+  const hiddenTabs = tabSettings?.hidden ?? DEFAULT_HIDDEN_TABS;
+  const shownTabs = VISIBLE_TABS.filter((t) => !hiddenTabs.includes(t));
+  const currentTab = hiddenTabs.includes(tab) ? "chat" : tab;
+  const saveHiddenTabs = useCallback(
+    async (hidden: string[]) => {
+      await fetch("/api/settings/tabs", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hidden }) });
+      refetchTabSettings();
+    },
+    [refetchTabSettings]
+  );
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
   const [chatInputs, setChatInputs] = useState<Record<number, string>>(() => {
     try {
@@ -506,7 +522,7 @@ export function App() {
                   <OpenInEditorButton path={selected.path} />
                   <OpenTerminalButton path={selected.path} />
                 </h2>
-                <Tabs value={tab} onValueChange={handleTabChange} className="desktop-titlebar-no-drag hidden xl:flex">
+                <Tabs value={currentTab} onValueChange={handleTabChange} className="desktop-titlebar-no-drag hidden xl:flex">
                   <TabsList>
                     <TabsTrigger value="chat">Chat</TabsTrigger>
                     <TabsTrigger value="conversations" className="gap-1.5">
@@ -517,11 +533,11 @@ export function App() {
                         </span>
                       )}
                     </TabsTrigger>
-                    <TabsTrigger value="todos">Todos</TabsTrigger>
-                    <TabsTrigger value="marketing">Marketing</TabsTrigger>
-                    <TabsTrigger value="skills">Skills</TabsTrigger>
-                    <TabsTrigger value="summary">Summary</TabsTrigger>
-                    <TabsTrigger value="insights">Insights</TabsTrigger>
+                    {!hiddenTabs.includes("todos") && <TabsTrigger value="todos">Todos</TabsTrigger>}
+                    {!hiddenTabs.includes("marketing") && <TabsTrigger value="marketing">Marketing</TabsTrigger>}
+                    {!hiddenTabs.includes("skills") && <TabsTrigger value="skills">Skills</TabsTrigger>}
+                    {!hiddenTabs.includes("summary") && <TabsTrigger value="summary">Summary</TabsTrigger>}
+                    {!hiddenTabs.includes("insights") && <TabsTrigger value="insights">Insights</TabsTrigger>}
                     <TabsTrigger value="settings">Settings</TabsTrigger>
                   </TabsList>
                 </Tabs>
@@ -534,7 +550,7 @@ export function App() {
                     aria-expanded={tabMenuOpen}
                   >
                     <Menu className="h-4 w-4" />
-                    <span className="hidden sm:inline">{TAB_LABELS[normalizeTab(tab)]}</span>
+                    <span className="hidden sm:inline">{TAB_LABELS[normalizeTab(currentTab)]}</span>
                     {subConvBadge > 0 && (
                       <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
                         {subConvBadge}
@@ -543,13 +559,13 @@ export function App() {
                   </button>
                   {tabMenuOpen && (
                     <div className="absolute right-0 top-full z-50 mt-2 w-44 overflow-hidden rounded-lg border border-border bg-popover py-1 shadow-lg">
-                      {VISIBLE_TABS.map((value) => (
+                      {shownTabs.map((value) => (
                         <button
                           key={value}
                           type="button"
                           onClick={() => handleTabChange(value)}
                           className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-accent ${
-                            normalizeTab(tab) === value ? "text-foreground" : "text-muted-foreground"
+                            normalizeTab(currentTab) === value ? "text-foreground" : "text-muted-foreground"
                           }`}
                         >
                           {TAB_LABELS[value]}
@@ -566,17 +582,17 @@ export function App() {
               </header>
 
               <div className="flex-1 overflow-hidden min-h-0">
-                {tab === "summary" && (
+                {currentTab === "summary" && (
                   <div className="h-full overflow-auto">
                     <SummaryTab project={selected} />
                   </div>
                 )}
-                {tab === "settings" && (
+                {currentTab === "settings" && (
                   <div className="h-full overflow-auto">
-                    <SettingsTab key={selected.id} project={selected} onProjectUpdate={refetch} />
+                    <SettingsTab key={selected.id} project={selected} onProjectUpdate={refetch} hiddenTabs={hiddenTabs} onHiddenTabsChange={saveHiddenTabs} />
                   </div>
                 )}
-                {tab === "marketing" && (
+                {currentTab === "marketing" && (
                   <div className="h-full">
                     <MarketingTab
                       key={selected.id}
@@ -588,12 +604,12 @@ export function App() {
                     />
                   </div>
                 )}
-                {tab === "skills" && (
+                {currentTab === "skills" && (
                   <div className="h-full overflow-auto">
                     <SkillsTab key={selected.id} project={selected} />
                   </div>
                 )}
-                {tab === "todos" && (
+                {currentTab === "todos" && (
                   <div className="h-full overflow-auto">
                     <TodosTab
                       project={selected}
@@ -601,17 +617,17 @@ export function App() {
                     />
                   </div>
                 )}
-                {tab === "workspaces" && (
+                {currentTab === "workspaces" && (
                   <div className="h-full overflow-auto">
                     <WorkspacesTab project={selected} />
                   </div>
                 )}
-                {tab === "insights" && (
+                {currentTab === "insights" && (
                   <div className="h-full overflow-auto">
                     <InsightsTab />
                   </div>
                 )}
-                {tab === "conversations" && (
+                {currentTab === "conversations" && (
                   <div className="h-full overflow-auto">
                     <ConversationsTab
                       project={selected}
@@ -623,7 +639,7 @@ export function App() {
                     />
                   </div>
                 )}
-                {tab === "chat" && (
+                {currentTab === "chat" && (
                   <ChatTab
                     key={selected.id}
                     project={selected}

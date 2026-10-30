@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { existsSync, readFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
-import { getWorkspaceSettings, setWorkspaceRoot } from "../settings.js";
+import { TOGGLEABLE_TABS, getHiddenTabs, getWorkspaceSettings, setHiddenTabs, setWorkspaceRoot } from "../settings.js";
 
 const app = new Hono();
 const GITHUB_URL = "https://github.com/poptocrack/overlord";
@@ -25,6 +25,18 @@ function readPackageVersion() {
 
   return process.env.npm_package_version ?? "0.0.0";
 }
+
+// Which optional tabs are hidden (global, not per project).
+app.get("/tabs", (c) => c.json({ hidden: getHiddenTabs(), toggleable: TOGGLEABLE_TABS }));
+
+app.put("/tabs", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    return c.json({ hidden: setHiddenTabs(body.hidden), toggleable: TOGGLEABLE_TABS });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Invalid tabs" }, 400);
+  }
+});
 
 app.get("/workspace", (c) => {
   return c.json(getWorkspaceSettings());
