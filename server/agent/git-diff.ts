@@ -1,7 +1,5 @@
 import { execFileSync } from "child_process";
-import { copyFileSync, existsSync, mkdtempSync, rmSync } from "fs";
-import { tmpdir } from "os";
-import { isAbsolute, join } from "path";
+import { withTempIndex } from "./git-index.js";
 
 // Lockfiles are listed in the stats but left out of the rendered patch:
 // they are huge and almost never what you want to review.
@@ -47,19 +45,10 @@ export function isValidSha(sha: unknown): sha is string {
  * user's staging area is never touched.
  */
 function workingTreeSha(cwd: string): string {
-  const dir = mkdtempSync(join(tmpdir(), "overlord-idx-"));
-  const tmpIndex = join(dir, "index");
-  try {
-    let realIndex = git(cwd, ["rev-parse", "--git-path", "index"]).trim();
-    if (!isAbsolute(realIndex)) realIndex = join(cwd, realIndex);
-    // Copying the real index keeps stat info, so `git add -A` only rehashes changed files.
-    if (existsSync(realIndex)) copyFileSync(realIndex, tmpIndex);
-    const env = { GIT_INDEX_FILE: tmpIndex };
+  return withTempIndex(cwd, (env) => {
     git(cwd, ["add", "-A"], env);
     return git(cwd, ["write-tree"], env).trim();
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  });
 }
 
 function isLockfile(path: string): boolean {

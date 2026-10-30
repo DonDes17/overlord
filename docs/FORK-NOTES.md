@@ -82,6 +82,14 @@ clic de confirmation. La conversation n’est pas modifiée.
 aviez stagé reste stagé après l’envoi d’un message. Avant, `git add -A` puis `git reset` désindexait
 tout à chaque message. Bon candidat pour une PR upstream (un seul fichier).
 
+Même principe pour le **rollback** ↶ (`fix/rollback-keep-index`) : `rollbackToSnapshot` restaure les fichiers
+via un index temporaire (`git checkout <sha> -- .` avec `GIT_INDEX_FILE`), supprime les fichiers créés depuis
+le snapshot (suivis ou non, sauf `node_modules` et `.env`, et les dossiers vidés), puis ne retire de l'index
+réel que les fichiers **ajoutés** qui n'existent plus (un fichier présent dans `HEAD` garde son entrée,
+sinon sa suppression non stagée deviendrait stagée). Le staging d'avant le message est donc conservé.
+Le helper `withTempIndex` (`server/agent/git-index.ts`) sert au snapshot, au rollback et au diff par tour.
+Le SHA reçu est validé (hexadécimal) et plus jamais interpolé dans une commande shell.
+
 ### 4. Commande `/branch` — `feat/branch-cmd`
 
 Gestion des branches git depuis le chat, plus la branche courante dans l’en-tête (badge `⎇`,
@@ -214,9 +222,8 @@ besoin de l'agent (`POST /api/conversations/:id/merge`, réponse avec `step`).
   changent des dépendances se gênent) ; création uniquement au moment où la
   branche est créée (pas d'ajout a posteriori) ; une branche git ne peut être extraite qu'à un seul
   endroit (`/branch <nom>` sur une branche déjà utilisée ailleurs renvoie l'erreur de git).
-
-- `rollbackToSnapshot` fait encore un `git reset` final : un rollback ↶ désindexe le staging.
-  Même correctif possible (index temporaire), pas fait.
+- Rollback : ce que vous avez stagé **après** le snapshot reste stagé (le fichier revient à l'état du
+  snapshot mais garde sa version stagée, donc `MM`) ; `git restore --staged <fichier>` pour l'enlever.
 
 ## Feuille de route
 
@@ -229,7 +236,7 @@ besoin de l'agent (`POST /api/conversations/:id/merge`, réponse avec `step`).
 | 7 ✅ | Worktrees : deux tâches en parallèle sur un même repo | `feat/worktrees` |
 | 8 ✅ | `/merge` : commit + fusion + nettoyage d'un worktree, ou PR, depuis Overlord | `feat/merge-cmd` |
 | — | Annulation par bloc (hunk) dans la fenêtre de diff | à définir |
-| — | Index temporaire aussi dans `rollbackToSnapshot` | à définir |
+| 9 ✅ | Index temporaire aussi dans `rollbackToSnapshot` | `fix/rollback-keep-index` |
 
 ## Repères pour développer
 
