@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { readdirSync, readFileSync, statSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import { usageCost } from "../pricing.js";
 
 const app = new Hono();
 
@@ -10,10 +11,6 @@ const HOME_PREFIX = homedir().replace(/\//g, "-"); // e.g. "-Users-tristandebroi
 
 // Idle gap above which we stop counting "active" time between two events.
 const IDLE_CAP_MS = 5 * 60 * 1000;
-// Approx Anthropic pricing for the Opus 4.x family ($ per 1M tokens). ~99% of
-// usage here is Opus; the handful of Sonnet/Haiku calls are priced at this rate
-// too (negligible error). Cost is an estimate. Subscriptions may not bill it.
-const PRICE = { input: 15, cacheRead: 1.5, cacheCreate: 18.75, output: 75 };
 
 // Claude Code encodes a project's cwd by replacing "/" with "-". Real folder
 // names containing "-" become ambiguous, so we can't just split. Projects live
@@ -70,16 +67,8 @@ interface InsightsData {
   byDow: number[];
   tools: Record<string, number>;
   models: Record<string, number>;
-}
-
-function projectCost(p: { inputTokens: number; cacheRead: number; cacheCreate: number; outputTokens: number }): number {
-  return (
-    (p.inputTokens * PRICE.input +
-      p.cacheRead * PRICE.cacheRead +
-      p.cacheCreate * PRICE.cacheCreate +
-      p.outputTokens * PRICE.output) /
-    1e6
-  );
+  /** Models with no known price: their messages are counted here and left out of every cost. */
+  unpriced: Record<string, { messages: number; tokens: number }>;
 }
 
 // Sum gaps between consecutive timestamps, ignoring idle stretches > IDLE_CAP.
@@ -174,6 +163,7 @@ function compute(days: number, rootDir: string): InsightsData {
     byDow: Array(7).fill(0),
     tools: {},
     models: {},
+    unpriced: {},
   };
 
   let dirs: string[];
@@ -247,6 +237,16 @@ function compute(days: number, rootDir: string): InsightsData {
             p.cacheRead += m.usage.cache_read_input_tokens || 0;
             p.cacheCreate += m.usage.cache_creation_input_tokens || 0;
             p.outputTokens += m.usage.output_tokens || 0;
+            // Priced per message, with the price of the model that answered it.
+            if (m.model && m.model !== "<synthetic>") {
+              const cost = usageCost(m.model, m.usage);
+              if (cost !== null) p.cost += cost;
+              else {
+                const u = (data.unpriced[m.model] ??= { messages: 0, tokens: 0 });
+                u.messages++;
+                u.tokens += (m.usage.input_tokens || 0) + (m.usage.cache_read_input_tokens || 0) + (m.usage.cache_creation_input_tokens || 0) + (m.usage.output_tokens || 0);
+              }
+            }
           }
           if (Array.isArray(m?.content)) {
             for (const b of m.content) {
@@ -276,7 +276,6 @@ function compute(days: number, rootDir: string): InsightsData {
 
     if (p.prompts > 0 || p.toolUses > 0) {
       p.days = activeDays.size;
-      p.cost = projectCost(p);
       data.byProject.push(p);
       data.totals.sessions += p.sessions;
       data.totals.prompts += p.prompts;

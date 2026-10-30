@@ -21,6 +21,8 @@ interface InsightsData {
   byDay: Record<string, { prompts: number; toolUses: number }>;
   byHour: number[]; byDow: number[];
   tools: Record<string, number>; models: Record<string, number>;
+  /** Models with no known price: left out of every cost. */
+  unpriced?: Record<string, { messages: number; tokens: number }>;
 }
 
 const DOWS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -31,9 +33,17 @@ function fmt(n: number): string {
   if (n >= 1e3) return (n / 1e3).toFixed(1) + " k";
   return String(n);
 }
+// Said out loud when some messages come from a model without a known price: the total leaves them out.
+function unpricedNote(d: InsightsData): string | null {
+  const entries = Object.entries(d.unpriced ?? {});
+  if (entries.length === 0) return null;
+  const messages = entries.reduce((n, [, u]) => n + u.messages, 0);
+  return `excludes ${messages} message${messages > 1 ? "s" : ""} from unpriced models (${entries.map(([m]) => m).join(", ")})`;
+}
 function fmtUsd(n: number): string {
   if (n >= 1000) return "$" + (n / 1000).toFixed(1) + "k";
-  return "$" + n.toFixed(0);
+  // Priced per model, amounts are often small: keep the cents below $10.
+  return "$" + n.toFixed(n < 10 ? 2 : 0);
 }
 function fmtDur(min: number): string {
   if (min < 60) return min + " min";
@@ -196,7 +206,7 @@ export function InsightsTab() {
       {/* Feature band */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <FeatureCard icon={<Clock className="h-5 w-5" />} value={fmtDur(data.totals.activeMin)} label="Active work time" sub="estimated, excluding idle time" from="from-sky-500" to="to-blue-500" />
-        <FeatureCard icon={<Sparkles className="h-5 w-5" />} value={fmtUsd(data.totals.cost)} label="Generated value" sub="equivalent API cost" from="from-violet-500" to="to-fuchsia-500" />
+        <FeatureCard icon={<Sparkles className="h-5 w-5" />} value={fmtUsd(data.totals.cost)} label="Generated value" sub={unpricedNote(data) ?? "equivalent API cost, priced per model"} from="from-violet-500" to="to-fuchsia-500" />
         <FeatureCard icon={<Flame className="h-5 w-5" />} value={`${data.streak.current}d`} label="Current streak" sub={`record: ${data.streak.longest}d`} from="from-orange-500" to="to-red-500" />
         <FeatureCard icon={<Zap className="h-5 w-5" />} value={data.longestSession ? fmtDur(Math.round(data.longestSession.ms / 60000)) : "-"} label="Longest session" sub={data.longestSession ? `${data.longestSession.project} · ${data.longestSession.date}` : ""} from="from-amber-500" to="to-yellow-500" />
       </div>
