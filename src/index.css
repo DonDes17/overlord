@@ -295,3 +295,25 @@ html, body, #root {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(400%); }
 }
+
+/* "Undo block" button injected in each hunk header of the turn diff (TurnDiffModal). */
+.overlord-diff .hunk-undo {
+  margin-left: 0.75rem;
+  padding: 0 0.4rem;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  opacity: 0.55;
+  cursor: pointer;
+}
+.overlord-diff .hunk-undo:hover:not(:disabled) { opacity: 1; }
+.overlord-diff .hunk-undo:disabled { opacity: 0.4; cursor: default; }
+.overlord-diff .hunk-undo.hunk-undo-confirm {
+  opacity: 1;
+  background: var(--destructive);
+  border-color: var(--destructive);
+  color: #fff;
+}

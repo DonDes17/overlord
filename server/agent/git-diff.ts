@@ -117,7 +117,11 @@ export function revertTurn(cwd: string, fromSha: string, toSha?: string, paths?:
   // --no-renames turns a rename into delete + add, so both paths must be in `paths`.
   const patch = git(cwd, ["diff", "--binary", "--no-renames", "--no-color", "--no-ext-diff", fromSha, target, ...scope]);
   if (!patch.trim()) return { ok: true };
+  return applyReverse(cwd, patch);
+}
 
+/** `git apply -R` on the working tree: checked first, so a conflict writes nothing. */
+function applyReverse(cwd: string, patch: string): RevertResult {
   const run = (args: string[]) =>
     execFileSync("git", ["apply", "-R", "--whitespace=nowarn", ...args], {
       cwd,
@@ -134,4 +138,37 @@ export function revertTurn(cwd: string, fromSha: string, toSha?: string, paths?:
     const stderr = (err as { stderr?: string }).stderr;
     return { ok: false, error: (stderr || String(err)).trim() };
   }
+}
+
+const HUNK_RE = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
+
+// Line numbers of a hunk header, ignoring the function name git may append after the second @@.
+function hunkKey(line: string): string | null {
+  const m = HUNK_RE.exec(line);
+  return m ? `${m[1]},${m[2] ?? 1},${m[3]},${m[4] ?? 1}` : null;
+}
+
+/**
+ * Undo one block (hunk) of one file of a turn. The hunk is identified by its position in the file's
+ * patch AND its header, so a diff that changed since it was displayed is refused instead of undoing
+ * the wrong block. Rebuilt on the server: the client never sends patch text.
+ */
+export function revertHunk(cwd: string, fromSha: string, toSha: string | undefined, path: string, index: number, header: string): RevertResult {
+  const target = toSha ?? workingTreeSha(cwd);
+  // Same options as turnDiff (default context) so block numbers match what the user sees.
+  const patch = git(cwd, ["diff", "--no-renames", "--no-color", "--no-ext-diff", fromSha, target, "--", path]);
+  const lines = patch.split("\n");
+  const first = lines.findIndex((l) => l.startsWith("@@ "));
+  if (first < 0) return { ok: false, error: "Ce fichier n'a pas de bloc de texte à annuler (binaire, renommé ou changement de mode)." };
+
+  const hunks: string[][] = [];
+  for (const line of lines.slice(first)) {
+    if (line.startsWith("@@ ")) hunks.push([line]);
+    else hunks[hunks.length - 1].push(line);
+  }
+  const hunk = hunks[index];
+  if (!hunk || hunkKey(hunk[0]) !== hunkKey(header)) {
+    return { ok: false, error: "Le diff a changé depuis son affichage : fermez et rouvrez la fenêtre." };
+  }
+  return applyReverse(cwd, [...lines.slice(0, first), ...hunk].join("\n").replace(/\n*$/, "\n"));
 }
