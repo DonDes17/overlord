@@ -1638,7 +1638,9 @@ export function ChatTab({ project, input, onInputChange, activeWorkspaces, onTog
         setSlashIndex((i) => (i - 1 + filteredCommands.length) % filteredCommands.length);
         return;
       }
-      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+      // Enter on a command that is already fully typed sends it; otherwise it completes the highlighted one.
+      const typedExactly = filteredCommands.some((c) => c.name.toLowerCase() === slashQuery.trim());
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey && !typedExactly)) {
         e.preventDefault();
         selectSlashCommand(filteredCommands[slashIndex].name);
         return;
