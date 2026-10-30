@@ -24,6 +24,8 @@ function errorText(err: unknown): string {
 export interface WorktreeInfo {
   path: string;
   branch: string;
+  /** Branch checked out in the project folder at creation (null when HEAD was detached). */
+  base: string | null;
 }
 
 export interface WorktreeStatus {
@@ -104,6 +106,7 @@ export function createWorktree(
     return { ok: false, error: "Ce dépôt n'a encore aucun commit." };
   }
 
+  const base = git(repoPath, ["branch", "--show-current"]) || null;
   const slug = worktreeSlug(name, conversationId);
   const branch = `overlord/${slug}`;
   const dir = join(WORKTREES_ROOT, `${basename(repoPath)}-${projectId}`, slug);
@@ -127,7 +130,7 @@ export function createWorktree(
     } catch {}
     return { ok: false, error: errorText(err) };
   }
-  return { ok: true, worktree: { path: dir, branch } };
+  return { ok: true, worktree: { path: dir, branch, base } };
 }
 
 export function worktreeStatus(path: string, branch: string): WorktreeStatus | null {

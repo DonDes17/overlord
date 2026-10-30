@@ -85,6 +85,10 @@ export function initDb() {
     sqlite.exec("ALTER TABLE conversations ADD COLUMN worktree_branch TEXT");
   }
 
+  if (!convCols.some((c) => c.name === "worktree_base")) {
+    sqlite.exec("ALTER TABLE conversations ADD COLUMN worktree_base TEXT");
+  }
+
   const projCols = sqlite.pragma("table_info(projects)") as { name: string }[];
   if (!projCols.some((c) => c.name === "favorite")) {
     sqlite.exec("ALTER TABLE projects ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0");

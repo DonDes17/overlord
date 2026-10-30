@@ -58,6 +58,8 @@ export const conversations = sqliteTable("conversations", {
   // Optional git worktree isolating this branch from the main working tree.
   worktreePath: text("worktree_path"),
   worktreeBranch: text("worktree_branch"),
+  // Branch checked out in the project folder when the worktree was created: what /merge merges into.
+  worktreeBase: text("worktree_base"),
   createdAt: text("created_at")
     .notNull()
     .$defaultFn(() => new Date().toISOString()),
