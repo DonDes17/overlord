@@ -47,13 +47,15 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, cl
         "prose-headings:text-foreground prose-headings:font-semibold prose-headings:mt-4 prose-headings:mb-2",
         "prose-h1:text-lg prose-h2:text-base prose-h3:text-sm",
         "prose-a:text-primary prose-a:underline prose-a:underline-offset-2 hover:prose-a:text-primary/80",
-        "prose-code:text-primary prose-code:bg-secondary prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:before:content-none prose-code:after:content-none",
+        "prose-code:text-foreground prose-code:bg-secondary prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:before:content-none prose-code:after:content-none",
         "prose-pre:bg-secondary prose-pre:border prose-pre:border-border prose-pre:rounded-lg prose-pre:p-3",
         "prose-li:text-foreground/80 prose-ul:my-1 prose-ol:my-1",
         "prose-table:text-xs prose-th:text-foreground prose-td:text-foreground/70 prose-th:border-border prose-td:border-border",
         "prose-blockquote:border-primary/40 prose-blockquote:text-muted-foreground",
         "prose-strong:text-foreground prose-em:text-foreground/80",
         "prose-p:my-1.5 prose-p:leading-relaxed",
+        // Prose keeps a comfortable line length; code blocks, tables and tool rows use the full column.
+        "prose-p:max-w-[72ch] prose-li:max-w-[72ch] prose-headings:max-w-[72ch]",
         className
       )}
     >
