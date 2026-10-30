@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
-import { conversations, messages, queuedMessages } from "../db/schema.js";
+import { conversations, messages, projects, queuedMessages } from "../db/schema.js";
 import { eq, desc, and, like } from "drizzle-orm";
 import { agentSessions, sessionKey } from "../agent/sessions.js";
+import { createWorktree, removeWorktree, worktreeStatus } from "../agent/git-worktree.js";
 import type { Channel } from "../agent/types.js";
 
 const app = new Hono();
@@ -53,7 +54,9 @@ function liveRunning(projectId: number, conversationId: number): boolean {
 // --- Sub-conversations ("branches") ---------------------------------------
 
 // POST /api/conversations/sub - spin off a new branch from a message.
-// Body: { projectId, parentConversationId?, contextText, title? }
+// Body: { projectId, parentConversationId?, contextText, title?, worktree?: true | { name?: string } }
+// With `worktree`, the branch gets its own git worktree (and `overlord/<name>` git branch) so it
+// can run in parallel with other branches without touching the same files.
 app.post("/sub", async (c) => {
   const body = await c.req.json();
   const projectId = Number(body.projectId);
@@ -79,12 +82,31 @@ app.post("/sub", async (c) => {
     .returning()
     .get();
 
-  const updated = db
+  let updated = db
     .update(conversations)
     .set({ channel: `sub:${created.id}` })
     .where(eq(conversations.id, created.id))
     .returning()
     .get();
+
+  if (body.worktree) {
+    const project = db.select().from(projects).where(eq(projects.id, projectId)).get();
+    const requested = typeof body.worktree === "object" && typeof body.worktree.name === "string" ? body.worktree.name.trim() : "";
+    const result = project
+      ? createWorktree(project.path, projectId, created.id, requested || title)
+      : ({ ok: false, error: "Project not found" } as const);
+    if (!result.ok) {
+      // No half-created branch: drop the row so the user can simply retry.
+      db.delete(conversations).where(eq(conversations.id, created.id)).run();
+      return c.json({ error: result.error }, 400);
+    }
+    updated = db
+      .update(conversations)
+      .set({ worktreePath: result.worktree.path, worktreeBranch: result.worktree.branch })
+      .where(eq(conversations.id, created.id))
+      .returning()
+      .get();
+  }
 
   return c.json(updated);
 });
@@ -115,6 +137,9 @@ app.get("/sub/:projectId", (c) => {
         running: liveRunning(projectId, r.id),
         hasEvents: !!r.eventsJson && r.eventsJson !== "[]",
         preview,
+        worktreeBranch: r.worktreeBranch,
+        worktreePath: r.worktreePath,
+        worktree: r.worktreePath && r.worktreeBranch ? worktreeStatus(r.worktreePath, r.worktreeBranch) : null,
       };
     });
 
@@ -147,13 +172,24 @@ app.delete("/:id", (c) => {
   }
   agentSessions.delete(key);
 
+  // Remove the worktree only when nothing would be lost; otherwise keep it and tell the caller
+  // where it is, since the conversation row (and so its path) is about to disappear.
+  let worktree: { removed: boolean; path: string; branch: string; reason?: string } | null = null;
+  if (conv.worktreePath && conv.worktreeBranch) {
+    const project = db.select().from(projects).where(eq(projects.id, conv.projectId)).get();
+    const result = project
+      ? removeWorktree(project.path, conv.worktreePath, conv.worktreeBranch, c.req.query("force") === "true")
+      : { ok: false, error: "Project not found" };
+    worktree = { removed: result.ok, path: conv.worktreePath, branch: conv.worktreeBranch, reason: result.error };
+  }
+
   db.delete(messages).where(eq(messages.conversationId, id)).run();
   db.delete(queuedMessages)
     .where(and(eq(queuedMessages.projectId, conv.projectId), eq(queuedMessages.channel, conv.channel)))
     .run();
   db.delete(conversations).where(eq(conversations.id, id)).run();
 
-  return c.json({ ok: true });
+  return c.json({ ok: true, worktree });
 });
 
 // --- Existing endpoints ----------------------------------------------------

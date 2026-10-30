@@ -56,14 +56,27 @@ export function saveEventsNow(session: AgentSession) {
     .run();
 }
 
-export function loadSessionFromDb(projectId: number, projectPath: string, channel: Channel): AgentSession | null {
-  const conv = db
+function conversationFor(projectId: number, channel: Channel) {
+  return db
     .select()
     .from(conversations)
     .where(and(eq(conversations.projectId, projectId), eq(conversations.channel, channel)))
     .orderBy(desc(conversations.createdAt))
     .limit(1)
     .get();
+}
+
+/**
+ * Folder the agent works in for this conversation: its worktree if it has one, else the project.
+ * Decided here from the database, never from what the client sends. A worktree that was deleted
+ * by hand is NOT replaced by the project folder, which would silently break the isolation.
+ */
+export function resolveProjectPath(projectId: number, projectPath: string, channel: Channel): string {
+  return conversationFor(projectId, channel)?.worktreePath ?? projectPath;
+}
+
+export function loadSessionFromDb(projectId: number, projectPath: string, channel: Channel): AgentSession | null {
+  const conv = conversationFor(projectId, channel);
 
   // Bind to the existing conversation row even when it has no events yet:
   // sub-conversations ("branches") are created up-front (empty) and their first
@@ -81,7 +94,7 @@ export function loadSessionFromDb(projectId: number, projectPath: string, channe
 
   return {
     projectId,
-    projectPath,
+    projectPath: conv.worktreePath ?? projectPath,
     channel,
     conversationId: conv.id,
     claudeSessionId: conv.claudeSessionId,

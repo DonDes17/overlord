@@ -29,7 +29,7 @@ import toolRequestsRoutes from "./routes/tool-requests.js";
 
 import { setWebSocketServer } from "./ws.js";
 import { attachWsHandlers } from "./agent/ws-handler.js";
-import { agentSessions, getOrCreateSession, loadSessionFromDb, sessionKey, saveEventsNow } from "./agent/sessions.js";
+import { agentSessions, getOrCreateSession, loadSessionFromDb, resolveProjectPath, sessionKey, saveEventsNow } from "./agent/sessions.js";
 import { isValidSessionId, listClaudeSessions, sessionFileExists } from "./agent/claude-sessions.js";
 import { getCommitsSince, rollbackToSnapshot } from "./agent/git-snapshot.js";
 import { isValidSha, revertTurn, turnDiff } from "./agent/git-diff.js";
@@ -379,23 +379,30 @@ app.post("/api/agent/rollback", async (c) => {
 // Diff of one agent turn: from the snapshot taken before the message to the
 // next message's snapshot, or to the working directory for the latest turn.
 app.post("/api/agent/diff", async (c) => {
-  const { projectId, fromSha, toSha } = await c.req.json();
-  if (!projectId || !isValidSha(fromSha)) return c.json({ ok: false, error: "projectId and a valid fromSha are required" }, 400);
+  const { projectId, fromSha, toSha, channel: rawChannel } = await c.req.json();
+  const channel = parseChannel(rawChannel);
+  if (!projectId || !channel || !isValidSha(fromSha)) return c.json({ ok: false, error: "projectId and a valid fromSha are required" }, 400);
   if (toSha !== undefined && toSha !== null && !isValidSha(toSha)) return c.json({ ok: false, error: "Invalid toSha" }, 400);
 
   const project = db.select().from(projects).where(eq(projects.id, Number(projectId))).get();
   if (!project) return c.json({ ok: false, error: "Project not found" }, 404);
 
   try {
-    return c.json({ ok: true, ...turnDiff(project.path, fromSha, toSha ?? undefined) });
+    return c.json({ ok: true, ...turnDiff(pathFor(project, channel), fromSha, toSha ?? undefined) });
   } catch (err) {
     return c.json({ ok: false, error: String(err) }, 500);
   }
 });
 
-function isAgentRunning(projectId: number): boolean {
+// Folder a request about a conversation must act on: its worktree if it has one, else the project.
+function pathFor(project: { id: number; path: string }, channel: Channel): string {
+  return agentSessions.get(sessionKey(project.id, channel))?.projectPath ?? resolveProjectPath(project.id, project.path, channel);
+}
+
+// Per folder, not per project: an agent running in a worktree must not block the main folder.
+function isAgentRunning(path: string): boolean {
   for (const [, session] of agentSessions) {
-    if (session.projectId === projectId && session.status === "running") return true;
+    if (session.projectPath === path && session.status === "running") return true;
   }
   return false;
 }
@@ -403,27 +410,31 @@ function isAgentRunning(projectId: number): boolean {
 // Current git branch of a project (shown in the chat header).
 app.get("/api/agent/branch", (c) => {
   const projectId = Number(c.req.query("projectId"));
+  const channel = parseChannel(c.req.query("channel"));
   const project = db.select().from(projects).where(eq(projects.id, projectId)).get();
-  if (!project) return c.json({ ok: false, error: "Project not found" }, 404);
-  return c.json({ ok: true, ...currentBranch(project.path), branches: listBranches(project.path) });
+  if (!project || !channel) return c.json({ ok: false, error: "Project not found" }, 404);
+  const path = pathFor(project, channel);
+  return c.json({ ok: true, ...currentBranch(path), branches: listBranches(path) });
 });
 
 // Switch to a branch (/branch <name>), create one (/branch -c <name>) or delete one (/branch -d <name>).
 app.post("/api/agent/branch", async (c) => {
-  const { projectId, name, action } = await c.req.json();
-  if (!projectId || typeof name !== "string" || !name.trim() || !["switch", "create", "delete"].includes(action)) {
+  const { projectId, name, action, channel: rawChannel } = await c.req.json();
+  const channel = parseChannel(rawChannel);
+  if (!projectId || !channel || typeof name !== "string" || !name.trim() || !["switch", "create", "delete"].includes(action)) {
     return c.json({ ok: false, error: "projectId, name and a valid action are required" }, 400);
   }
 
   const project = db.select().from(projects).where(eq(projects.id, Number(projectId))).get();
   if (!project) return c.json({ ok: false, error: "Project not found" }, 404);
-  if (isAgentRunning(project.id)) {
+  const path = pathFor(project, channel);
+  if (isAgentRunning(path)) {
     return c.json({ ok: false, error: "The agent is running on this project. Stop it before changing branches." }, 409);
   }
 
   const run = action === "create" ? createBranch : action === "delete" ? deleteBranch : switchBranch;
-  const result = run(project.path, name.trim());
-  return c.json({ ...result, ...currentBranch(project.path) }, result.ok ? 200 : 400);
+  const result = run(path, name.trim());
+  return c.json({ ...result, ...currentBranch(path) }, result.ok ? 200 : 400);
 });
 
 function parseChannel(raw: unknown): Channel | null {
@@ -440,7 +451,7 @@ app.get("/api/agent/claude-sessions", (c) => {
   if (!project || !channel) return c.json({ ok: false, error: "Project not found" }, 404);
 
   const current = agentSessions.get(sessionKey(projectId, channel))?.claudeSessionId ?? null;
-  return c.json({ ok: true, current, sessions: listClaudeSessions(project.path, 10) });
+  return c.json({ ok: true, current, sessions: listClaudeSessions(pathFor(project, channel), 10) });
 });
 
 // /plan: plan mode applies to the next messages of this conversation (read-only, the agent proposes a plan).
@@ -468,7 +479,7 @@ app.post("/api/agent/clear", async (c) => {
   const channel = parseChannel(rawChannel);
   const project = db.select().from(projects).where(eq(projects.id, Number(projectId))).get();
   if (!project || !channel) return c.json({ ok: false, error: "Project not found" }, 404);
-  if (isAgentRunning(project.id)) return c.json({ ok: false, error: "The agent is running. Stop it first." }, 409);
+  if (isAgentRunning(pathFor(project, channel))) return c.json({ ok: false, error: "The agent is running. Stop it first." }, 409);
 
   const session = agentSessions.get(sessionKey(project.id, channel)) ?? loadSessionFromDb(project.id, project.path, channel);
   if (session) {
@@ -484,10 +495,11 @@ app.post("/api/agent/resume", async (c) => {
   const channel = parseChannel(rawChannel);
   const project = db.select().from(projects).where(eq(projects.id, Number(projectId))).get();
   if (!project || !channel) return c.json({ ok: false, error: "Project not found" }, 404);
-  if (!isValidSessionId(sessionId) || !sessionFileExists(project.path, sessionId)) {
+  const path = pathFor(project, channel);
+  if (!isValidSessionId(sessionId) || !sessionFileExists(path, sessionId)) {
     return c.json({ ok: false, error: "Unknown session for this project." }, 404);
   }
-  if (isAgentRunning(project.id)) return c.json({ ok: false, error: "The agent is running. Stop it first." }, 409);
+  if (isAgentRunning(path)) return c.json({ ok: false, error: "The agent is running. Stop it first." }, 409);
 
   const session = getOrCreateSession(project.id, project.path, channel);
   session.claudeSessionId = sessionId;
@@ -497,8 +509,9 @@ app.post("/api/agent/resume", async (c) => {
 
 // Undo the changes of a turn (or of some of its files) on the working tree.
 app.post("/api/agent/revert", async (c) => {
-  const { projectId, fromSha, toSha, paths } = await c.req.json();
-  if (!projectId || !isValidSha(fromSha)) return c.json({ ok: false, error: "projectId and a valid fromSha are required" }, 400);
+  const { projectId, fromSha, toSha, paths, channel: rawChannel } = await c.req.json();
+  const channel = parseChannel(rawChannel);
+  if (!projectId || !channel || !isValidSha(fromSha)) return c.json({ ok: false, error: "projectId and a valid fromSha are required" }, 400);
   if (toSha !== undefined && toSha !== null && !isValidSha(toSha)) return c.json({ ok: false, error: "Invalid toSha" }, 400);
   if (paths !== undefined && (!Array.isArray(paths) || paths.some((p) => typeof p !== "string" || !p || p.startsWith("-") || p.startsWith("/") || p.split("/").includes("..")))) {
     return c.json({ ok: false, error: "Invalid paths" }, 400);
@@ -507,12 +520,13 @@ app.post("/api/agent/revert", async (c) => {
   const project = db.select().from(projects).where(eq(projects.id, Number(projectId))).get();
   if (!project) return c.json({ ok: false, error: "Project not found" }, 404);
 
-  if (isAgentRunning(project.id)) {
-    return c.json({ ok: false, error: "The agent is running on this project. Stop it before undoing changes." }, 409);
+  const path = pathFor(project, channel);
+  if (isAgentRunning(path)) {
+    return c.json({ ok: false, error: "The agent is running in this folder. Stop it before undoing changes." }, 409);
   }
 
   try {
-    const result = revertTurn(project.path, fromSha, toSha ?? undefined, paths);
+    const result = revertTurn(path, fromSha, toSha ?? undefined, paths);
     return c.json(result, result.ok ? 200 : 500);
   } catch (err) {
     return c.json({ ok: false, error: String(err) }, 500);
