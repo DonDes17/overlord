@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { db } from "../db/index.js";
 import { todos } from "../db/schema.js";
 import { eq, asc } from "drizzle-orm";
+import { getPlanioBaseUrl } from "../settings.js";
+import { ticketUrl } from "../agent/planio.js";
 
 const app = new Hono();
 
@@ -14,7 +16,9 @@ app.get("/:projectId", (c) => {
     .where(eq(todos.projectId, projectId))
     .orderBy(asc(todos.sortOrder), asc(todos.createdAt))
     .all();
-  return c.json(result);
+  // A todo imported from a ticket carries a link to it.
+  const base = getPlanioBaseUrl();
+  return c.json(result.map((t) => ({ ...t, externalUrl: t.source === "planio" && t.externalId ? ticketUrl(base, t.externalId) : null })));
 });
 
 // POST /api/todos

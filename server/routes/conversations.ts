@@ -79,27 +79,35 @@ function detachWorktree(conv: ConversationRow, projectPath: string, force: boole
 // Body: { projectId, parentConversationId?, contextText, title?, worktree?: true | { name?: string } }
 // With `worktree`, the branch gets its own git worktree (and `overlord/<name>` git branch) so it
 // can run in parallel with other branches without touching the same files.
-app.post("/sub", async (c) => {
-  const body = await c.req.json();
-  const projectId = Number(body.projectId);
-  if (!projectId) return c.json({ error: "projectId required" }, 400);
-
-  const contextText: string = typeof body.contextText === "string" ? body.contextText : "";
-  const title: string = (body.title && String(body.title).trim()) || deriveTitle(contextText);
-  const parentConversationId =
-    body.parentConversationId != null ? Number(body.parentConversationId) : null;
+/**
+ * A new branch (sub-conversation), optionally in its own git worktree and/or started from a ticket.
+ * Used by POST /sub and by "start from a ticket" (routes/planio.ts).
+ */
+export function createBranchConversation(opts: {
+  projectId: number;
+  title?: string;
+  contextText?: string;
+  parentConversationId?: number | null;
+  worktree?: { name?: string; branch?: string } | null;
+  ticket?: { id: number | string; subject: string; url: string | null } | null;
+}): { ok: true; conversation: ConversationRow } | { ok: false; error: string } {
+  const contextText = opts.contextText ?? "";
+  const title = (opts.title && opts.title.trim()) || deriveTitle(contextText);
 
   // Insert first to obtain the id, then encode it into the channel so the
   // agent session machinery keys this branch independently (`sub:<id>`).
   const created = db
     .insert(conversations)
     .values({
-      projectId,
+      projectId: opts.projectId,
       channel: "sub:pending",
       title,
       contextText: contextText || null,
-      parentConversationId,
+      parentConversationId: opts.parentConversationId ?? null,
       unread: false,
+      ticketId: opts.ticket ? String(opts.ticket.id) : null,
+      ticketSubject: opts.ticket?.subject ?? null,
+      ticketUrl: opts.ticket?.url ?? null,
     })
     .returning()
     .get();
@@ -111,16 +119,15 @@ app.post("/sub", async (c) => {
     .returning()
     .get();
 
-  if (body.worktree) {
-    const project = db.select().from(projects).where(eq(projects.id, projectId)).get();
-    const requested = typeof body.worktree === "object" && typeof body.worktree.name === "string" ? body.worktree.name.trim() : "";
+  if (opts.worktree) {
+    const project = db.select().from(projects).where(eq(projects.id, opts.projectId)).get();
     const result = project
-      ? createWorktree(project.path, projectId, created.id, requested || title)
+      ? createWorktree(project.path, opts.projectId, created.id, opts.worktree.name?.trim() || title, { branch: opts.worktree.branch })
       : ({ ok: false, error: "Project not found" } as const);
     if (!result.ok) {
       // No half-created branch: drop the row so the user can simply retry.
       db.delete(conversations).where(eq(conversations.id, created.id)).run();
-      return c.json({ error: result.error }, 400);
+      return { ok: false, error: result.error };
     }
     updated = db
       .update(conversations)
@@ -130,7 +137,24 @@ app.post("/sub", async (c) => {
       .get();
   }
 
-  return c.json(updated);
+  return { ok: true, conversation: updated };
+}
+
+app.post("/sub", async (c) => {
+  const body = await c.req.json();
+  const projectId = Number(body.projectId);
+  if (!projectId) return c.json({ error: "projectId required" }, 400);
+
+  const requestedName = typeof body.worktree === "object" && body.worktree && typeof body.worktree.name === "string" ? body.worktree.name : undefined;
+  const result = createBranchConversation({
+    projectId,
+    title: typeof body.title === "string" ? body.title : undefined,
+    contextText: typeof body.contextText === "string" ? body.contextText : "",
+    parentConversationId: body.parentConversationId != null ? Number(body.parentConversationId) : null,
+    worktree: body.worktree ? { name: requestedName } : null,
+  });
+  if (!result.ok) return c.json({ error: result.error }, 400);
+  return c.json(result.conversation);
 });
 
 // GET /api/conversations/sub/:projectId - list branches for a project, newest first.
@@ -161,6 +185,9 @@ app.get("/sub/:projectId", (c) => {
         preview,
         worktreeBranch: r.worktreeBranch,
         worktreePath: r.worktreePath,
+        ticketId: r.ticketId,
+        ticketSubject: r.ticketSubject,
+        ticketUrl: r.ticketUrl,
         worktree: r.worktreePath && r.worktreeBranch ? worktreeStatus(r.worktreePath, r.worktreeBranch) : null,
       };
     });
@@ -243,7 +270,7 @@ app.post("/:id/merge", async (c) => {
 
     // 3a. Pull request on the project's own remote.
     if (mode === "pr") {
-      const pr = createPullRequest(project.path, path, branch, base);
+      const pr = createPullRequest(project.path, path, branch, base, conv.ticketId ? { id: conv.ticketId, subject: conv.ticketSubject ?? "", url: conv.ticketUrl } : undefined);
       if (!pr.ok) return c.json({ ok: false, error: pr.error }, 400);
       return c.json({ ok: true, step: "pr", url: pr.url, existing: pr.existing, base });
     }
