@@ -288,6 +288,9 @@ export function SettingsTab({ project, onProjectUpdate, hiddenTabs, onHiddenTabs
           {/* Indexing */}
           <IndexingCard project={project} />
 
+          {/* Planio */}
+          <PlanioCard key={project.id} project={project} />
+
           {/* Model */}
           <Card>
             <CardHeader>
@@ -501,6 +504,65 @@ function DangerZoneCard({ project }: { project: Project }) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PlanioCard({ project }: { project: Project }) {
+  const [baseUrl, setBaseUrl] = useState("");
+  const [names, setNames] = useState(project.planioProject ?? "");
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/planio/settings")
+      .then((r) => r.json())
+      .then((d) => setBaseUrl(d.baseUrl ?? ""))
+      .catch(() => {});
+  }, []);
+
+  const save = async () => {
+    setError(null);
+    setSaved(false);
+    try {
+      const res = await fetch("/api/planio/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ baseUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Adresse invalide");
+      setBaseUrl(data.baseUrl ?? "");
+      await patch(`/projects/${project.id}`, { planioProject: names.trim() || null });
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">Planio</CardTitle>
+        <CardDescription className="text-xs">
+          Tickets lus via le connecteur Planio de votre compte Claude, en lecture seule : rien n'est jamais écrit dans Planio.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Adresse de Planio (pour les liens et les PR)</label>
+          <Input value={baseUrl} onChange={(e) => { setBaseUrl(e.target.value); setSaved(false); }} placeholder="ex. https://monentreprise.plan.io" />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Projet(s) Planio de ce projet (séparés par des virgules)</label>
+          <Input value={names} onChange={(e) => { setNames(e.target.value); setSaved(false); }} placeholder="ex. Cloud, Exopro" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" className="text-xs" onClick={save}>Enregistrer</Button>
+          {saved && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Check className="h-3 w-3" />Enregistré</span>}
+          {error && <span className="text-xs text-destructive">{error}</span>}
+        </div>
       </CardContent>
     </Card>
   );
