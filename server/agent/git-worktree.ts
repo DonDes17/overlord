@@ -98,7 +98,9 @@ export function createWorktree(
   repoPath: string,
   projectId: number,
   conversationId: number,
-  name: string
+  name: string,
+  /** `branch`: use exactly this git branch name (a ticket branch like `6929-fix-x`), no `overlord/` prefix. */
+  options?: { branch?: string }
 ): { ok: true; worktree: WorktreeInfo } | { ok: false; error: string } {
   try {
     git(repoPath, ["rev-parse", "--is-inside-work-tree"]);
@@ -112,8 +114,20 @@ export function createWorktree(
   }
 
   const base = git(repoPath, ["branch", "--show-current"]) || null;
-  const slug = worktreeSlug(name, conversationId);
-  const branch = `overlord/${slug}`;
+  const exact = options?.branch?.trim();
+  if (exact) {
+    try {
+      git(repoPath, ["check-ref-format", "--branch", exact]);
+    } catch {
+      return { ok: false, error: `« ${exact} » n'est pas un nom de branche valide.` };
+    }
+    try {
+      git(repoPath, ["rev-parse", "--verify", "--quiet", `refs/heads/${exact}`]);
+      return { ok: false, error: `La branche « ${exact} » existe déjà.` };
+    } catch {}
+  }
+  const slug = exact ? exact.replace(/\//g, "-") : worktreeSlug(name, conversationId);
+  const branch = exact ?? `overlord/${slug}`;
   const dir = join(WORKTREES_ROOT, `${basename(repoPath)}-${projectId}`, slug);
   if (existsSync(dir)) return { ok: false, error: `Le dossier ${dir} existe déjà.` };
 

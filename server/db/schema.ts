@@ -19,6 +19,8 @@ export const projects = sqliteTable("projects", {
   longDescription: text("long_description"),
   links: text("links"),
   learningsEnabled: integer("learnings_enabled", { mode: "boolean" }).notNull().default(true),
+  // Planio projects (comma separated, matched by name) whose tickets belong to this project.
+  planioProject: text("planio_project"),
   createdAt: text("created_at")
     .notNull()
     .$defaultFn(() => new Date().toISOString()),
@@ -60,6 +62,10 @@ export const conversations = sqliteTable("conversations", {
   worktreeBranch: text("worktree_branch"),
   // Branch checked out in the project folder when the worktree was created: what /merge merges into.
   worktreeBase: text("worktree_base"),
+  // Ticket this branch was started from (shown, and used for the pull request title and body).
+  ticketId: text("ticket_id"),
+  ticketSubject: text("ticket_subject"),
+  ticketUrl: text("ticket_url"),
   createdAt: text("created_at")
     .notNull()
     .$defaultFn(() => new Date().toISOString()),
@@ -139,6 +145,11 @@ export const todos = sqliteTable("todos", {
   title: text("title").notNull(),
   description: text("description"),
   done: integer("done", { mode: "boolean" }).notNull().default(false),
+  // A todo imported from a ticket tracker: source "planio", the ticket number and its last known status
+  // (null when the ticket is no longer in the open tickets assigned to the user).
+  source: text("source"),
+  externalId: text("external_id"),
+  externalStatus: text("external_status"),
   sortOrder: real("sort_order").notNull().default(0),
   createdAt: text("created_at")
     .notNull()

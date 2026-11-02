@@ -90,6 +90,20 @@ export function prBaseRef(worktreePath: string, base: string): string {
   }
 }
 
+function ticketTitle(ticket: { id: string; subject: string }): string {
+  const subject = ticket.subject.trim();
+  return `[#${ticket.id}] ${subject.length > 120 ? `${subject.slice(0, 117)}...` : subject}`;
+}
+
+// "Refs #n" and the link, then the branch's own commit subjects (gh --fill would have taken them as the body).
+function ticketBody(worktreePath: string, base: string, branch: string, ticket: { id: string; url: string | null }): string {
+  let commits: string[] = [];
+  try {
+    commits = git(worktreePath, ["log", "--format=%s", `${base}..${branch}`, "-n", "30"]).split("\n").filter(Boolean);
+  } catch {}
+  return [`Refs #${ticket.id}`, ticket.url ?? "", commits.length ? "\n## Commits\n" + commits.map((c) => `- ${c}`).join("\n") : ""].filter((l) => l !== "").join("\n");
+}
+
 export type PrResult = { ok: true; url: string; existing: boolean } | { ok: false; error: string };
 
 /**
@@ -97,7 +111,14 @@ export type PrResult = { ok: true; url: string; existing: boolean } | { ok: fals
  * that remote and is always passed to gh explicitly: gh must never guess it (on a fork it picks
  * the upstream repo), and every Overlord project has its own remote.
  */
-export function createPullRequest(repoPath: string, worktreePath: string, branch: string, base: string): PrResult {
+export function createPullRequest(
+  repoPath: string,
+  worktreePath: string,
+  branch: string,
+  base: string,
+  /** A branch started from a ticket gets `[#n] subject` as title and `Refs #n` (and the link) in the body. */
+  ticket?: { id: string; subject: string; url: string | null }
+): PrResult {
   let remote: string;
   try {
     remote = git(repoPath, ["remote", "get-url", "origin"]);
@@ -114,7 +135,8 @@ export function createPullRequest(repoPath: string, worktreePath: string, branch
   }
 
   try {
-    const out = run("gh", worktreePath, ["pr", "create", "--repo", repo, "--base", base, "--head", branch, "--fill"], 60000);
+    const content = ticket ? ["--title", ticketTitle(ticket), "--body", ticketBody(worktreePath, base, branch, ticket)] : ["--fill"];
+    const out = run("gh", worktreePath, ["pr", "create", "--repo", repo, "--base", base, "--head", branch, ...content], 60000);
     const url = out.split("\n").reverse().find((l) => /^https?:\/\//.test(l.trim()));
     return url ? { ok: true, url: url.trim(), existing: false } : { ok: false, error: `PR créée mais URL introuvable :\n${out}` };
   } catch (err) {
