@@ -204,6 +204,14 @@ est validée (`[a-z0-9-]`) ; sans réponse valable, la branche d'un ticket est j
 `branch-<id>`, jamais les mots d'origine. Un `branchName` explicite passé à `/api/planio/start` est gardé tel quel.
 `/branch -c <nom>` (nom tapé par vous) n'est pas concerné.
 
+### Statuts Planio importés — `feat/planio-status-filter`
+
+Le sync n'importe que les tickets dont le statut est dans la liste réglée dans Paramètres → Planio
+(« Statuts importés », par défaut `Development, Ready to dev`, comparaison insensible à la casse ; vide = tous).
+Un ticket déjà importé qui change de statut (ex. `Code review`) reste dans les Todos avec son nouveau statut ;
+seul un ticket qui n'est plus dans mes tickets ouverts est marqué « plus dans mes tickets ouverts ».
+Réglage global, stocké dans `~/.overlord/settings.json` (`planioStatuses`).
+
 ### 9. `/merge` — `feat/merge-cmd`
 
 Dans une branche avec worktree : `/merge` ramène le travail sur la branche de base, `/merge --pr` ouvre

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { projects, todos } from "../db/schema.js";
-import { getPlanioBaseUrl, setPlanioBaseUrl } from "../settings.js";
+import { getPlanioBaseUrl, getPlanioStatuses, setPlanioBaseUrl, setPlanioStatuses } from "../settings.js";
 import { buildTicketContext, fetchMyOpenTickets, fetchTicket, ticketUrl } from "../agent/planio.js";
 import { englishSlug } from "../agent/english-slug.js";
 import type { PlanioTicketDetail } from "../agent/planio.js";
@@ -10,12 +10,14 @@ import { createBranchConversation } from "./conversations.js";
 
 const app = new Hono();
 
-app.get("/settings", (c) => c.json({ baseUrl: getPlanioBaseUrl() }));
+app.get("/settings", (c) => c.json({ baseUrl: getPlanioBaseUrl(), statuses: getPlanioStatuses() }));
 
 app.put("/settings", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   try {
-    return c.json({ baseUrl: setPlanioBaseUrl(body.baseUrl) });
+    const baseUrl = setPlanioBaseUrl(body.baseUrl);
+    const statuses = body.statuses === undefined ? getPlanioStatuses() : setPlanioStatuses(body.statuses);
+    return c.json({ baseUrl, statuses });
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : "Invalid address" }, 400);
   }
@@ -55,6 +57,11 @@ app.post("/sync", async (c) => {
     const existing = db.select().from(todos).where(and(eq(todos.projectId, project.id), eq(todos.source, "planio"))).all();
     const byTicket = new Map(existing.map((t) => [t.externalId, t]));
 
+    // Only tickets in the wanted statuses are imported ("Development", "Ready to dev"...; none listed = all).
+    // A ticket already imported that moved to another status stays, with its new status shown.
+    const wanted = getPlanioStatuses().map((n) => n.toLowerCase());
+    const isWanted = (status: string) => wanted.length === 0 || wanted.includes(status.trim().toLowerCase());
+
     let order = db.select().from(todos).where(eq(todos.projectId, project.id)).all().reduce((m, t) => Math.max(m, t.sortOrder), 0);
     let imported = 0;
     let updated = 0;
@@ -64,7 +71,7 @@ app.post("/sync", async (c) => {
         // Planio is the source of truth for the text and the status; `done` stays the user's.
         db.update(todos).set({ title: t.subject, description: t.description || null, externalStatus: t.status }).where(eq(todos.id, known.id)).run();
         updated++;
-      } else {
+      } else if (isWanted(t.status)) {
         db.insert(todos).values({ projectId: project.id, title: t.subject, description: t.description || null, source: "planio", externalId: String(t.id), externalStatus: t.status, sortOrder: ++order }).run();
         imported++;
       }

@@ -512,13 +512,17 @@ function DangerZoneCard({ project }: { project: Project }) {
 function PlanioCard({ project }: { project: Project }) {
   const [baseUrl, setBaseUrl] = useState("");
   const [names, setNames] = useState(project.planioProject ?? "");
+  const [statuses, setStatuses] = useState("");
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/planio/settings")
       .then((r) => r.json())
-      .then((d) => setBaseUrl(d.baseUrl ?? ""))
+      .then((d) => {
+        setBaseUrl(d.baseUrl ?? "");
+        setStatuses(Array.isArray(d.statuses) ? d.statuses.join(", ") : "");
+      })
       .catch(() => {});
   }, []);
 
@@ -529,7 +533,7 @@ function PlanioCard({ project }: { project: Project }) {
       const res = await fetch("/api/planio/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ baseUrl }),
+        body: JSON.stringify({ baseUrl, statuses: statuses.split(",").map((x) => x.trim()).filter(Boolean) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Adresse invalide");
@@ -557,6 +561,10 @@ function PlanioCard({ project }: { project: Project }) {
         <div className="space-y-1">
           <label className="text-xs text-muted-foreground">Projet(s) Planio de ce projet (séparés par des virgules)</label>
           <Input value={names} onChange={(e) => { setNames(e.target.value); setSaved(false); }} placeholder="ex. Cloud, Exopro" />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Statuts importés (séparés par des virgules ; vide = tous)</label>
+          <Input value={statuses} onChange={(e) => { setStatuses(e.target.value); setSaved(false); }} placeholder="ex. Development, Ready to dev" />
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" className="text-xs" onClick={save}>Enregistrer</Button>

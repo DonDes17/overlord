@@ -8,7 +8,11 @@ type Settings = {
   hiddenTabs?: string[];
   /** Planio address, e.g. https://acme.plan.io: used to build a link to each ticket. */
   planioBaseUrl?: string;
+  /** Planio statuses whose tickets are imported (names, case-insensitive). Absent = the defaults below; [] = all. */
+  planioStatuses?: string[];
 };
+
+export const DEFAULT_PLANIO_STATUSES = ["Development", "Ready to dev"];
 
 // Chat, Conversations and Settings are always there. The others can be hidden: that is a view
 // preference, nothing is removed, so the fork stays easy to sync with upstream.
@@ -110,5 +114,17 @@ export function setPlanioBaseUrl(url: unknown): string | null {
   if (parsed.protocol !== "https:") throw new Error("L'adresse doit commencer par https://");
   const clean = `${parsed.origin}`;
   writeSettings({ ...readSettings(), planioBaseUrl: clean });
+  return clean;
+}
+
+export function getPlanioStatuses(): string[] {
+  const saved = readSettings().planioStatuses;
+  return Array.isArray(saved) ? saved : DEFAULT_PLANIO_STATUSES;
+}
+
+export function setPlanioStatuses(value: unknown): string[] {
+  if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) throw new Error("statuses must be a list of names");
+  const clean = [...new Set((value as string[]).map((v) => v.trim()).filter(Boolean))];
+  writeSettings({ ...readSettings(), planioStatuses: clean });
   return clean;
 }
