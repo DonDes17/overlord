@@ -1,5 +1,5 @@
-import { execFileSync } from "child_process";
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, appendFileSync } from "fs";
+import { execFileSync, spawn } from "child_process";
+import { copyFileSync, openSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, appendFileSync } from "fs";
 import { homedir } from "os";
 import { basename, isAbsolute, join, resolve } from "path";
 
@@ -63,12 +63,46 @@ export function addLocalExclude(repoPath: string, pattern: string) {
   appendFileSync(file, `${current && !current.endsWith("\n") ? "\n" : ""}${pattern}\n`);
 }
 
+/** Install command for a React Native project (its tooling follows real paths, so a symlinked node_modules breaks it). */
+function reactNativeInstall(repoPath: string): { cmd: string; args: string[] } | null {
+  try {
+    const pkg = JSON.parse(readFileSync(join(repoPath, "package.json"), "utf-8"));
+    if (!pkg.dependencies?.["react-native"] && !pkg.devDependencies?.["react-native"]) return null;
+  } catch {
+    return null;
+  }
+  if (existsSync(join(repoPath, "yarn.lock"))) return { cmd: "yarn", args: ["install"] };
+  if (existsSync(join(repoPath, "pnpm-lock.yaml"))) return { cmd: "pnpm", args: ["install"] };
+  if (existsSync(join(repoPath, "bun.lockb")) || existsSync(join(repoPath, "bun.lock"))) return { cmd: "bun", args: ["install"] };
+  if (existsSync(join(repoPath, "package-lock.json"))) return { cmd: "npm", args: ["ci"] };
+  return null;
+}
+
 function prepareWorktree(repoPath: string, dir: string) {
   addLocalExclude(repoPath, "/node_modules");
 
-  const modules = join(repoPath, "node_modules");
-  const link = join(dir, "node_modules");
-  if (existsSync(modules) && !existsSync(link)) symlinkSync(modules, link, "dir");
+  const install = reactNativeInstall(repoPath);
+  if (install) {
+    // React Native (Metro, Gradle autolinking) resolves real paths: a symlink to the main project's
+    // node_modules makes it mix both folders. Install for real, in the background (can take minutes);
+    // the output goes next to the worktree so a failure can be read.
+    try {
+      const log = openSync(`${dir}.install.log`, "w");
+      const child = spawn(install.cmd, install.args, { cwd: dir, stdio: ["ignore", log, log], detached: true, shell: process.platform === "win32" });
+      child.on("error", () => {});
+      child.unref();
+    } catch {}
+  } else {
+    const modules = join(repoPath, "node_modules");
+    const link = join(dir, "node_modules");
+    if (existsSync(modules) && !existsSync(link)) symlinkSync(modules, link, "dir");
+  }
+
+  // Git-ignored local files a native Android build needs (SDK path).
+  const localProps = join("android", "local.properties");
+  if (existsSync(join(repoPath, localProps)) && existsSync(join(dir, "android")) && !existsSync(join(dir, localProps)) && isIgnored(repoPath, localProps)) {
+    copyFileSync(join(repoPath, localProps), join(dir, localProps));
+  }
 
   // Only git-ignored env files are copied: tracked ones are already checked out, and a copied
   // file that is not ignored would show up as an untracked change in every snapshot.
