@@ -15,6 +15,8 @@ export interface Project {
   longDescription: string | null;
   links: string | null;
   learningsEnabled: boolean;
+  /** Planio project name(s), comma-separated, whose tickets are imported as todos. */
+  planioProject?: string | null;
   createdAt: string;
   updatedAt: string;
   latestSession?: Session | null;
@@ -54,6 +56,10 @@ export interface SubConversation {
   worktreeBranch: string | null;
   worktreePath: string | null;
   worktree: { changed: number; ahead: number } | null;
+  /** Set when the branch was started from a Planio ticket. */
+  ticketId?: string | null;
+  ticketSubject?: string | null;
+  ticketUrl?: string | null;
 }
 
 export interface WorkspaceInfo {
@@ -112,4 +118,9 @@ export interface Todo {
   done: boolean;
   sortOrder: number;
   createdAt: string;
+  /** "planio" for imported tickets. externalStatus null = no longer among my open tickets. */
+  source?: string | null;
+  externalId?: string | null;
+  externalStatus?: string | null;
+  externalUrl?: string | null;
 }

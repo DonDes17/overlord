@@ -614,6 +614,7 @@ export function App() {
                     <TodosTab
                       project={selected}
                       onSendToChat={handleSendToChat}
+                      onTicketStarted={(conv) => { refreshSubConvs(); handleOpenSubConv(conv); }}
                     />
                   </div>
                 )}

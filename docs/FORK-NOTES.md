@@ -387,8 +387,39 @@ besoin de l'agent (`POST /api/conversations/:id/merge`, réponse avec `step`).
 - macOS garde les icônes en cache : le Dock peut mettre quelques minutes, ou un redémarrage de l'app, à
   afficher la nouvelle.
 
+### 14. Tickets Planio — `feat/planio-tickets`
+
+- **But** : partir d'un ticket Planio pour nommer la branche, le worktree et la PR. **Lecture seule** :
+  Planio est visible des clients, donc rien n'y est jamais écrit (les outils d'écriture du connecteur ne sont
+  pas dans la liste autorisée) et aucune synchronisation ne tourne en arrière-plan.
+- **Accès sans clé d'API** : le serveur lance un `claude --print` court (Haiku, environ 1 centime, 6 à 14 s)
+  qui n'appelle que `get_user`, `search_issues` et `get_issue` du connecteur Planio de votre compte Claude.
+  On n'utilise **jamais ce que le modèle écrit** : on lit le résultat brut de l'outil (le JSON de Redmine)
+  dans la sortie du CLI, donc rien n'est retapé ni altéré. Code : `server/agent/planio.ts`.
+- **Gros résultats** : au-delà de la limite du CLI, le résultat est écrit dans un fichier sous `~/.claude`
+  que le serveur relit (deux formes de message gérées, chemin strictement vérifié). Une page de 100 tickets
+  suffit pour la plupart des cas (3 pages au plus).
+- **Onglet Todos → « Sync Planio »** : importe mes tickets ouverts comme todos. La première fois, une liste
+  propose les projets Planio à associer au projet Overlord (réglable ensuite dans Settings → Planio).
+  Un ticket fermé ou réassigné est marqué « plus dans mes tickets ouverts », jamais supprimé ; `done` reste
+  le vôtre. Si la liste est incomplète (plus de tickets que lus), l'interface le dit.
+- **Bouton « Worktree »** sur un ticket : relit le ticket complet (description et notes publiques,
+  les notes privées sont ignorées), crée une branche conversation avec worktree nommé `<id>-<slug>`
+  (ex. `6929-dedoublonner-les-appels-api-repetes-auto`, sans préfixe `overlord/`) et injecte le ticket
+  comme contexte. Si la relecture échoue, le texte de la dernière synchro est utilisé et l'interface prévient.
+- **`/merge --pr`** sur une branche de ticket : titre `[#6929] Sujet`, corps `Refs #6929`, lien, liste
+  des commits. Sans ticket, `--fill` comme avant.
+- **Réglages** : adresse de Planio (https uniquement, pour fabriquer `<adresse>/issues/<id>`, le connecteur
+  ne donne pas l'URL) et projet(s) Planio par projet.
+- **Tester sans toucher à Planio** : `CLAUDE_PATH` vers un faux `claude` qui imprime les événements réels ;
+  `gh` factice qui journalise ses arguments en JSON.
+- **Pièges** : la migration des colonnes de `todos` doit passer après le `CREATE TABLE todos` (base neuve) ;
+  la découpe du slug se fait sur une frontière de mot.
+
 ## Limites connues
 
+- Planio : une synchronisation = un appel Claude (environ 1 centime) ; au-delà de 300 tickets ouverts, la
+  liste est partielle. Pas de mise à jour de Planio depuis Overlord, volontairement.
 - `/merge` : le badge `worktree · …` de la fenêtre de la branche ne se met à jour qu'à sa réouverture ;
   la liste des branches de l'onglet Conversations se rafraîchit au prochain chargement.
 - Worktrees : pas de CodeGraph (l'index est par chemin) ; `node_modules` partagé (deux branches qui

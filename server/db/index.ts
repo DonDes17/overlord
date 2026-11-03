@@ -89,12 +89,25 @@ export function initDb() {
     sqlite.exec("ALTER TABLE conversations ADD COLUMN worktree_base TEXT");
   }
 
+  if (!convCols.some((c) => c.name === "ticket_id")) {
+    sqlite.exec("ALTER TABLE conversations ADD COLUMN ticket_id TEXT");
+  }
+  if (!convCols.some((c) => c.name === "ticket_subject")) {
+    sqlite.exec("ALTER TABLE conversations ADD COLUMN ticket_subject TEXT");
+  }
+  if (!convCols.some((c) => c.name === "ticket_url")) {
+    sqlite.exec("ALTER TABLE conversations ADD COLUMN ticket_url TEXT");
+  }
+
   const projCols = sqlite.pragma("table_info(projects)") as { name: string }[];
   if (!projCols.some((c) => c.name === "favorite")) {
     sqlite.exec("ALTER TABLE projects ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0");
   }
   if (!projCols.some((c) => c.name === "hidden")) {
     sqlite.exec("ALTER TABLE projects ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!projCols.some((c) => c.name === "planio_project")) {
+    sqlite.exec("ALTER TABLE projects ADD COLUMN planio_project TEXT");
   }
   if (!projCols.some((c) => c.name === "summary")) {
     sqlite.exec("ALTER TABLE projects ADD COLUMN summary TEXT");
@@ -176,6 +189,12 @@ export function initDb() {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+
+  // todos is created above: its columns can only be migrated now (a fresh database has no todos table earlier).
+  const todoCols = sqlite.pragma("table_info(todos)") as { name: string }[];
+  if (!todoCols.some((c) => c.name === "source")) sqlite.exec("ALTER TABLE todos ADD COLUMN source TEXT");
+  if (!todoCols.some((c) => c.name === "external_id")) sqlite.exec("ALTER TABLE todos ADD COLUMN external_id TEXT");
+  if (!todoCols.some((c) => c.name === "external_status")) sqlite.exec("ALTER TABLE todos ADD COLUMN external_status TEXT");
 
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS queued_messages (

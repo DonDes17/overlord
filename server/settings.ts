@@ -6,6 +6,8 @@ type Settings = {
   workspaceRoot?: string;
   /** Tabs the user chose to hide (see TOGGLEABLE_TABS). Absent = the defaults below. */
   hiddenTabs?: string[];
+  /** Planio address, e.g. https://acme.plan.io: used to build a link to each ticket. */
+  planioBaseUrl?: string;
 };
 
 // Chat, Conversations and Settings are always there. The others can be hidden: that is a view
@@ -86,4 +88,27 @@ export function setHiddenTabs(tabs: unknown): string[] {
  */
 export function isSummaryEnabled(): boolean {
   return !getHiddenTabs().includes("summary");
+}
+
+export function getPlanioBaseUrl(): string | null {
+  return readSettings().planioBaseUrl || null;
+}
+
+export function setPlanioBaseUrl(url: unknown): string | null {
+  if (url === null || url === "" || url === undefined) {
+    const { planioBaseUrl: _removed, ...rest } = readSettings();
+    writeSettings(rest);
+    return null;
+  }
+  if (typeof url !== "string") throw new Error("url must be a string");
+  let parsed: URL;
+  try {
+    parsed = new URL(url.trim());
+  } catch {
+    throw new Error("URL invalide");
+  }
+  if (parsed.protocol !== "https:") throw new Error("L'adresse doit commencer par https://");
+  const clean = `${parsed.origin}`;
+  writeSettings({ ...readSettings(), planioBaseUrl: clean });
+  return clean;
 }
