@@ -3,7 +3,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ChatTab } from "./ChatTab.js";
 import type { Project } from "../types.js";
 import type { SubConversation } from "../types.js";
-import { GitBranch, X, ChevronDown, ChevronRight } from "lucide-react";
+import { GitBranch, X, ChevronDown, ChevronRight, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -18,6 +18,17 @@ interface Props {
 // keeps running, so a busy branch can be reopened later to see its progress.
 export function SubConversationModal({ project, conversation, onClose }: Props) {
   const [input, setInput] = useState("");
+  const [pathCopied, setPathCopied] = useState(false);
+  const copyWorktreePath = useCallback(() => {
+    if (!conversation.worktreePath) return;
+    navigator.clipboard
+      .writeText(conversation.worktreePath)
+      .then(() => {
+        setPathCopied(true);
+        setTimeout(() => setPathCopied(false), 1500);
+      })
+      .catch(() => {});
+  }, [conversation.worktreePath]);
   const [contextOpen, setContextOpen] = useState(false);
   const [activeWorkspaces, setActiveWorkspaces] = useState<string[]>([]);
 
@@ -51,6 +62,17 @@ export function SubConversationModal({ project, conversation, onClose }: Props) 
             >
               worktree · {conversation.worktreeBranch}
             </span>
+          )}
+          {conversation.worktreePath && (
+            <button
+              type="button"
+              onClick={copyWorktreePath}
+              className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-secondary hover:text-foreground"
+              title={`Copier le chemin du worktree\n${conversation.worktreePath}`}
+            >
+              {pathCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+              {pathCopied ? "Copié" : "Chemin"}
+            </button>
           )}
           <div className="ml-auto flex items-center gap-1">
             {conversation.contextText && (
