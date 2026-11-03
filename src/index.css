@@ -245,14 +245,16 @@ html, body, #root {
      brings it up to --hit-target (no effect on layout or looks; a bigger button is unchanged:
      max(100%, ...)). Buttons that already style their own ::after (tabs, checkbox, sidebar) are left
      alone, and `data-no-hit-area` opts a button out (e.g. when it sits right next to another one).
+     A button that contains other buttons (a clickable row or card with action buttons inside) gets no
+     overlay at all: its overlay would sit on top of them and swallow their clicks.
      In @layer base on purpose: utilities such as `absolute` or `fixed` still win on `position`. */
   :root {
     --hit-target: 32px;
   }
-  :is(button, [role="button"]):not([class*="after:"]):not([data-no-hit-area]) {
+  :is(button, [role="button"]):not([class*="after:"]):not([data-no-hit-area]):not(:has(button, [role="button"])) {
     position: relative;
   }
-  :is(button, [role="button"]):not([class*="after:"]):not([data-no-hit-area])::after {
+  :is(button, [role="button"]):not([class*="after:"]):not([data-no-hit-area]):not(:has(button, [role="button"]))::after {
     content: "";
     position: absolute;
     top: 50%;
