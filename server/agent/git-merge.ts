@@ -153,3 +153,21 @@ export function createPullRequest(
     return { ok: false, error: `Branche poussée sur ${repo}, mais la PR n'a pas pu être créée :\n${text}` };
   }
 }
+
+/**
+ * The merged pull request whose head is exactly the tip of `branch`, or null (no PR, not merged, `gh` missing,
+ * or commits added since). A squash or rebase merge leaves the branch's own commits unmerged in git's eyes,
+ * so this is how Overlord knows that nothing is lost when the worktree goes away.
+ */
+export function mergedPullRequest(repoPath: string, branch: string): { number: number; url: string } | null {
+  try {
+    const repo = parseGithubRepo(git(repoPath, ["remote", "get-url", "origin"]));
+    if (!repo) return null;
+    const tip = git(repoPath, ["rev-parse", `refs/heads/${branch}`]);
+    const out = run("gh", repoPath, ["pr", "list", "--repo", repo, "--head", branch, "--state", "merged", "--json", "number,url,headRefOid", "--limit", "10"], 20000);
+    const prs: { number: number; url: string; headRefOid: string }[] = JSON.parse(out);
+    return prs.find((p) => p.headRefOid === tip) ?? null;
+  } catch {
+    return null;
+  }
+}

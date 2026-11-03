@@ -1,5 +1,6 @@
 import { execFileSync, spawn } from "child_process";
 import { copyFileSync, openSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, appendFileSync } from "fs";
+import { mergedPullRequest } from "./git-merge.js";
 import { homedir } from "os";
 import { basename, isAbsolute, join, resolve } from "path";
 
@@ -208,9 +209,12 @@ export function removeWorktree(
   branch: string,
   force = false
 ): { ok: boolean; error?: string; status?: WorktreeStatus } {
+  // A squash/rebase merged pull request leaves the branch's commits "unmerged" for git, yet nothing is lost.
+  let merged = false;
   if (existsSync(path)) {
     const status = worktreeStatus(path, branch);
-    if (!force && (!status || status.changed > 0 || status.ahead > 0)) {
+    if (!force && status && status.changed === 0 && status.ahead > 0 && mergedPullRequest(repoPath, branch)) merged = true;
+    if (!force && !merged && (!status || status.changed > 0 || status.ahead > 0)) {
       return {
         ok: false,
         status: status ?? undefined,
@@ -234,7 +238,7 @@ export function removeWorktree(
   }
 
   try {
-    git(repoPath, ["branch", force ? "-D" : "-d", branch]);
+    git(repoPath, ["branch", force || merged ? "-D" : "-d", branch]);
   } catch (err) {
     // The folder is gone; a branch that cannot be deleted safely is kept, not an error.
     return { ok: true, error: `Worktree supprimé, branche ${branch} conservée : ${errorText(err)}` };
