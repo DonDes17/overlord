@@ -64,6 +64,8 @@ export function ConversationsTab({ project, conversations, onOpen, onDelete, not
             <div
               key={conv.id}
               role="button"
+              // The global minimum-hit-area overlay (index.css) would cover the delete button inside the card.
+              data-no-hit-area
               tabIndex={0}
               onClick={() => onOpen(conv)}
               onKeyDown={(e) => {
