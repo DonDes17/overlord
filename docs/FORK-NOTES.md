@@ -36,7 +36,7 @@ Ce fichier sert de contexte pour Claude Code quand on travaille sur ce repo.
 - Le chat lance `claude --print` (headless). Les commandes interactives du CLI (`/compact`,
   `/permissions`, `/rewind`…) apparaissent dans l’autocomplétion mais **ne font rien**.
   (`/clear` et `/resume` sont désormais gérées par Overlord, voir ci-dessous.)
-- Overlord intercepte ses propres commandes : `/model`, `/stop`, `/cost`, `/branch`, `/clear`, `/resume`, `/plan`, `/worktree`, `/merge`, `/help`
+- Overlord intercepte ses propres commandes : `/model`, `/stop`, `/cost`, `/branch`, `/clear`, `/resume`, `/plan`, `/worktree`, `/pr`, `/merge`, `/help`
   (`OVERLORD_COMMANDS` et `handleSend` dans `src/components/ChatTab.tsx`).
   Les commandes perso et plugins (`/aidd-*`…) passent au CLI et fonctionnent.
 - Skills et hooks Claude Code s’appliquent dans le chat (un message = un `UserPromptSubmit`).
@@ -200,6 +200,10 @@ diffs, undo).
 Dans une branche avec worktree : `/merge` ramène le travail sur la branche de base, `/merge --pr` ouvre
 une PR. À **relancer** jusqu'à la fin : chaque appel fait ce qu'il peut et s'arrête à l'étape qui a
 besoin de l'agent (`POST /api/conversations/:id/merge`, réponse avec `step`).
+
+**`/pr`** (branche `feat/pr-command`) est la commande pour ouvrir une PR sans rien fusionner ; `/merge --pr`
+en reste un alias. `/merge` seul (fusion locale, sans PR) demande maintenant une confirmation. Aucun
+changement côté serveur : seul `ChatTab.tsx` est touché. Le worktree est conservé après `/pr`.
 
 1. Modifications non commitées (ou fusion résolue mais pas commitée) → `commit_needed` : l'agent de la
    branche reçoit la consigne de commiter avec un message clair.
