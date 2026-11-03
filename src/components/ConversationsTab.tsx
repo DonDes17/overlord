@@ -61,10 +61,19 @@ export function ConversationsTab({ project, conversations, onOpen, onDelete, not
       ) : (
         <div className="flex flex-col gap-2">
           {conversations.map((conv) => (
-            <button
+            <div
               key={conv.id}
+              role="button"
+              tabIndex={0}
               onClick={() => onOpen(conv)}
+              onKeyDown={(e) => {
+                if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                  e.preventDefault();
+                  onOpen(conv);
+                }
+              }}
               className={cn(
+                "cursor-pointer",
                 "group flex items-start gap-3 rounded-lg border px-4 py-3 text-left transition-colors hover:bg-accent/40",
                 conv.unread ? "border-primary/40 bg-primary/5" : "border-border"
               )}
@@ -117,15 +126,18 @@ export function ConversationsTab({ project, conversations, onOpen, onDelete, not
                 <p className="mt-0.5 text-[10px] text-muted-foreground/60">{timeAgo(conv.createdAt)}</p>
               </div>
 
-              <span
-                role="button"
+              {/* A real button, not nested inside another one, and it never reaches the card's own click. */}
+              <button
+                type="button"
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => handleDelete(e, conv.id)}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 opacity-0 transition-opacity hover:bg-secondary hover:text-destructive group-hover:opacity-100"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 opacity-0 transition-opacity hover:bg-secondary hover:text-destructive focus:opacity-100 group-hover:opacity-100"
                 title="Delete branch"
+                aria-label="Delete branch"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-              </span>
-            </button>
+              </button>
+            </div>
           ))}
         </div>
       )}
