@@ -198,7 +198,11 @@ export function App() {
   const handleDeleteSubConv = useCallback((id: number) => {
     if (openSubConvRef.current?.id === id) setOpenSubConv(null);
     fetch(`/api/conversations/${id}`, { method: "DELETE" })
-      .then((r) => r.json())
+      .then(async (r) => {
+        const d = await r.json().catch(() => null);
+        if (!r.ok) throw new Error(d?.error ?? `HTTP ${r.status}`);
+        return d;
+      })
       .then((d) => {
         // A worktree holding unsaved work is kept on disk: say where, since the row is gone.
         if (d?.worktree && !d.worktree.removed) {
@@ -206,7 +210,11 @@ export function App() {
         }
         refreshSubConvs();
       })
-      .catch(() => {});
+      .catch((err) => {
+        // Never fail silently: the row is still there, say why.
+        setSubConvNotice(`Suppression impossible : ${err instanceof Error ? err.message : String(err)}`);
+        refreshSubConvs();
+      });
   }, [refreshSubConvs]);
 
   // Restore selected project from URL first, then localStorage.
