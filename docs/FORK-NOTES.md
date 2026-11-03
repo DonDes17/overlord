@@ -212,6 +212,13 @@ Un ticket déjà importé qui change de statut (ex. `Code review`) reste dans le
 seul un ticket qui n'est plus dans mes tickets ouverts est marqué « plus dans mes tickets ouverts ».
 Réglage global, stocké dans `~/.overlord/settings.json` (`planioStatuses`).
 
+### Sous-modules git dans un worktree — `fix/worktree-submodules`
+
+`git worktree add` laisse les sous-modules vides (ex. `auticiel_modules` → « Unable to resolve module »).
+À la création, Overlord lance en arrière-plan `git submodule update --init --recursive --reference <sous-module du
+projet>` (presque rien à télécharger), puis, pour un projet React Native, l'installation des dépendances du projet
+et de chaque sous-module qui a son propre `node_modules` dans le projet. Sortie dans `<worktree>.install.log`.
+
 ### 9. `/merge` — `feat/merge-cmd`
 
 Dans une branche avec worktree : `/merge` ramène le travail sur la branche de base, `/merge --pr` ouvre
