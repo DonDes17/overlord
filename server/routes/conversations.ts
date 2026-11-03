@@ -3,6 +3,7 @@ import { db } from "../db/index.js";
 import { conversations, messages, projects, queuedMessages } from "../db/schema.js";
 import { eq, desc, and, like } from "drizzle-orm";
 import { agentSessions, sessionKey } from "../agent/sessions.js";
+import { englishSlug } from "../agent/english-slug.js";
 import { createWorktree, removeWorktree, worktreeStatus } from "../agent/git-worktree.js";
 import { createPullRequest, fastForwardBase, prBaseRef, updateFromBase, worktreeGitState } from "../agent/git-merge.js";
 import { currentBranch } from "../agent/git-branch.js";
@@ -145,7 +146,12 @@ app.post("/sub", async (c) => {
   const projectId = Number(body.projectId);
   if (!projectId) return c.json({ error: "projectId required" }, 400);
 
-  const requestedName = typeof body.worktree === "object" && body.worktree && typeof body.worktree.name === "string" ? body.worktree.name : undefined;
+  let requestedName = typeof body.worktree === "object" && body.worktree && typeof body.worktree.name === "string" ? body.worktree.name : undefined;
+  if (body.worktree) {
+    // The git branch is always named in English, whatever the language of the title or of the message.
+    const basis = requestedName?.trim() || (typeof body.title === "string" && body.title.trim()) || (typeof body.contextText === "string" ? body.contextText : "");
+    requestedName = (await englishSlug(basis)) ?? "branch";
+  }
   const result = createBranchConversation({
     projectId,
     title: typeof body.title === "string" ? body.title : undefined,

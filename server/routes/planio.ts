@@ -3,7 +3,8 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { projects, todos } from "../db/schema.js";
 import { getPlanioBaseUrl, setPlanioBaseUrl } from "../settings.js";
-import { buildTicketContext, fetchMyOpenTickets, fetchTicket, ticketBranchName, ticketUrl } from "../agent/planio.js";
+import { buildTicketContext, fetchMyOpenTickets, fetchTicket, ticketUrl } from "../agent/planio.js";
+import { englishSlug } from "../agent/english-slug.js";
 import type { PlanioTicketDetail } from "../agent/planio.js";
 import { createBranchConversation } from "./conversations.js";
 
@@ -99,11 +100,16 @@ app.post("/start", async (c) => {
     : { id, subject: todo.title, status: todo.externalStatus ?? "", project: "", description: todo.description ?? "", notes: [] };
   const url = ticketUrl(getPlanioBaseUrl(), id);
 
+  // Branch names are always in English: the subject is translated, and without an answer the branch is
+  // just the ticket number (never the original words).
+  const english = typeof branchName === "string" && branchName.trim() ? null : await englishSlug(ticket.subject, 50);
+  const branch = typeof branchName === "string" && branchName.trim() ? branchName.trim() : english ? `${id}-${english}` : String(id);
+
   const created = createBranchConversation({
     projectId: todo.projectId,
     title: `#${id} ${ticket.subject}`,
     contextText: buildTicketContext(ticket, url),
-    worktree: { branch: typeof branchName === "string" && branchName.trim() ? branchName.trim() : ticketBranchName(id, ticket.subject) },
+    worktree: { branch },
     ticket: { id, subject: ticket.subject, url },
   });
   if (!created.ok) return c.json({ ok: false, error: created.error }, 400);

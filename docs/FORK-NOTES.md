@@ -195,6 +195,15 @@ diffs, undo).
   (il sautait avant le `/`). Il est maintenant replacé à la fin, seulement si l'éditeur a le focus.
 - Fichiers : `src/components/ChatTab.tsx` (`handleKeyDown`), `src/components/RichPasteInput.tsx`.
 
+### Noms de branche en anglais — `feat/english-branch-names`
+
+Les branches créées par Overlord (worktree d'un ticket `<id>-<slug>`, worktree d'une branche `overlord/<slug>`)
+sont toujours nommées en anglais : `server/agent/english-slug.ts` demande à Haiku un slug anglais (2 à 6
+mots) à partir du sujet du ticket, du titre ou du nom saisi (~quelques secondes, ~1 centime). La réponse
+est validée (`[a-z0-9-]`) ; sans réponse valable, la branche d'un ticket est juste `<id>` et les autres
+`branch-<id>`, jamais les mots d'origine. Un `branchName` explicite passé à `/api/planio/start` est gardé tel quel.
+`/branch -c <nom>` (nom tapé par vous) n'est pas concerné.
+
 ### 9. `/merge` — `feat/merge-cmd`
 
 Dans une branche avec worktree : `/merge` ramène le travail sur la branche de base, `/merge --pr` ouvre
