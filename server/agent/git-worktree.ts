@@ -79,24 +79,58 @@ function reactNativeInstall(repoPath: string): { cmd: string; args: string[] } |
   return null;
 }
 
+const shq = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
+
+/** Submodule folders declared by the worktree's .gitmodules. */
+function submodulePaths(dir: string): string[] {
+  if (!existsSync(join(dir, ".gitmodules"))) return [];
+  try {
+    return git(dir, ["config", "-f", ".gitmodules", "--get-regexp", "^submodule\\..*\\.path$"])
+      .split("\n")
+      .map((l) => l.split(/\s+/).slice(1).join(" "))
+      .filter((p) => p && !p.startsWith("/") && !p.includes(".."));
+  } catch {
+    return [];
+  }
+}
+
 function prepareWorktree(repoPath: string, dir: string) {
   addLocalExclude(repoPath, "/node_modules");
 
   const install = reactNativeInstall(repoPath);
+  const submodules = submodulePaths(dir);
+  const steps: string[] = [];
+
+  // `git worktree add` leaves submodules as empty folders. Populate them, borrowing the objects of the main
+  // project's copy so that nothing (or almost nothing) is downloaded.
+  for (const sub of submodules) {
+    steps.push(`git submodule update --init --recursive --reference ${shq(join(repoPath, sub))} -- ${shq(sub)}`);
+  }
+
   if (install) {
     // React Native (Metro, Gradle autolinking) resolves real paths: a symlink to the main project's
-    // node_modules makes it mix both folders. Install for real, in the background (can take minutes);
-    // the output goes next to the worktree so a failure can be read.
-    try {
-      const log = openSync(`${dir}.install.log`, "w");
-      const child = spawn(install.cmd, install.args, { cwd: dir, stdio: ["ignore", log, log], detached: true, shell: process.platform === "win32" });
-      child.on("error", () => {});
-      child.unref();
-    } catch {}
+    // node_modules makes it mix both folders. Install for real, in the background (can take minutes).
+    steps.push([install.cmd, ...install.args].join(" "));
+    // A submodule that has its own node_modules in the main project needs its own install too.
+    for (const sub of submodules) {
+      if (existsSync(join(repoPath, sub, "node_modules")) && existsSync(join(repoPath, sub, "package.json"))) {
+        steps.push(`(cd ${shq(sub)} && ${[install.cmd, ...install.args].join(" ")})`);
+      }
+    }
   } else {
     const modules = join(repoPath, "node_modules");
     const link = join(dir, "node_modules");
     if (existsSync(modules) && !existsSync(link)) symlinkSync(modules, link, "dir");
+  }
+
+  if (steps.length > 0 && process.platform !== "win32") {
+    // One background shell, output next to the worktree so a failure can be read.
+    try {
+      const log = openSync(`${dir}.install.log`, "w");
+      const child = spawn("sh", ["-c", steps.join("\n")], { cwd: dir, stdio: ["ignore", log, log], detached: true, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } });
+      child.on("error", () => {});
+      child.unref();
+    } catch {}
   }
 
   // Git-ignored local files a native Android build needs (SDK path).
