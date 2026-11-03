@@ -148,7 +148,8 @@ npm run build:electron       # Build frontend, backend, and Electron entrypoints
 npm run dev:electron         # Build and launch the Electron desktop app
 npm run prepare:electron-package # Prepare the isolated Electron packaging folder
 npm run dist:electron        # Package desktop binaries for the current platform
-npm run dist:electron:mac    # Package macOS binaries
+npm run dist:electron:mac    # Package macOS binaries (Apple Silicon and Intel)
+npm run dist:electron:mac:arm64  # Package macOS binaries for Apple Silicon only (faster); output in release/
 npm run dist:electron:win    # Package Windows binaries
 npm run dist:electron:linux  # Package Linux binaries
 ```
