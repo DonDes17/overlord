@@ -155,36 +155,38 @@ app.patch("/:id", async (c) => {
   return c.json(updated);
 });
 
-// POST /api/projects/scan - scan root dir for projects
-// ?gitOnly=true to only scan git repos (default: scan all directories)
+// POST /api/projects/scan - find git repositories under the root dir
+// Looks up to SCAN_DEPTH levels deep, so a root like the home folder picks up
+// ~/Desktop/foo and ~/CODE/bar. Non-git folders and system folders are ignored.
+const SCAN_DEPTH = 2;
+const SCAN_SKIP = new Set(["Library", "Applications", "Movies", "Music", "Pictures", "Public", "node_modules"]);
+
+function findGitRepos(dir: string, depth: number, out: string[]) {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return; // unreadable folder (permissions): skip it
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith(".") || SCAN_SKIP.has(entry.name)) continue;
+    const path = join(dir, entry.name);
+    if (existsSync(join(path, ".git"))) out.push(path);
+    else if (depth > 1) findGitRepos(path, depth - 1, out);
+  }
+}
+
 app.post("/scan", async (c) => {
   const rootDir = (c.get("rootDir" as never) as string) || process.cwd();
-  const body = await c.req.json().catch(() => ({}));
-  const gitOnly = body.gitOnly ?? false;
-  const found: string[] = [];
+  if (!existsSync(rootDir)) return c.json({ error: "Cannot read root directory" }, 500);
 
-  try {
-    const entries = readdirSync(rootDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isDirectory() && !entry.name.startsWith(".")) {
-        if (gitOnly) {
-          const projectPath = join(rootDir, entry.name);
-          if (existsSync(join(projectPath, ".git"))) {
-            found.push(entry.name);
-          }
-        } else {
-          found.push(entry.name);
-        }
-      }
-    }
-  } catch {
-    return c.json({ error: "Cannot read root directory" }, 500);
-  }
+  const found: string[] = [];
+  findGitRepos(rootDir, SCAN_DEPTH, found);
 
   // Upsert found projects
   const upserted = [];
-  for (const name of found) {
-    const path = join(rootDir, name);
+  for (const path of found) {
+    const name = path.split("/").pop() || "unknown";
     const existing = db
       .select()
       .from(projects)
