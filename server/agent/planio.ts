@@ -14,8 +14,12 @@ import { join, resolve, sep } from "path";
 
 const CLAUDE_PATH = process.env.CLAUDE_PATH || "claude";
 const MODEL = process.env.OVERLORD_PLANIO_MODEL || "claude-haiku-5-5";
-const TOOL_PREFIX = "mcp__claude_ai_Planio__";
-const READ_TOOLS = ["get_user", "search_issues", "get_issue"].map((name) => TOOL_PREFIX + name);
+// The Planio connector comes in two shapes: the claude.ai connector (`mcp__claude_ai_Planio__*`) or an MCP
+// server declared locally as `planio` (`mcp__planio__*`). Read tools of both are allowed; only the one that
+// exists is ever called.
+const TOOL_PREFIXES = ["mcp__claude_ai_Planio__", "mcp__planio__"];
+const READ_TOOL_NAMES = ["get_user", "search_issues", "get_issue"];
+const READ_TOOLS = TOOL_PREFIXES.flatMap((prefix) => READ_TOOL_NAMES.map((name) => prefix + name));
 const TIMEOUT_MS = 120_000;
 
 // Caps on what gets copied into a conversation's context.
@@ -146,7 +150,7 @@ export function readPersisted(text: string, claudeHome = join(homedir(), ".claud
   }
 }
 
-const planioResults = (results: ToolResult[], tool: string) => results.filter((r) => r.name === TOOL_PREFIX + tool);
+const planioResults = (results: ToolResult[], tool: string) => results.filter((r) => TOOL_PREFIXES.some((prefix) => r.name === prefix + tool));
 
 function failure(results: ToolResult[], tool: string): string {
   const err = planioResults(results, tool).find((r) => r.isError);
